@@ -38,7 +38,12 @@ db = database.Database()
 logger = logging.getLogger(__name__)
 
 user_semaphores = {}
+user_semaphores = {}
 user_tasks = {}
+
+def get_localized_text(key, user_id):
+    language = db.get_user_attribute(user_id, "current_language") or "en"
+    return config.locales[language].get(key, config.locales["en"][key])
 
 HELP_MESSAGE = """Commands:
 ⚪ /retry – Regenerate last bot answer
@@ -88,7 +93,10 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
         user_semaphores[user.id] = asyncio.Semaphore(1)
 
     if db.get_user_attribute(user.id, "current_model") is None:
-        db.set_user_attribute(user.id, "current_model", config.models["available_text_models"][0])
+        db.set_user_attribute(user.id, "current_model", "gpt-5-mini-2025-08-07")
+
+    if db.get_user_attribute(user.id, "current_language") is None:
+        db.set_user_attribute(user.id, "current_language", "en")
 
     # back compatibility for n_used_tokens field
     n_used_tokens = db.get_user_attribute(user.id, "n_used_tokens")
@@ -136,8 +144,8 @@ async def start_handle(update: Update, context: CallbackContext):
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
     db.start_new_dialog(user_id)
 
-    reply_text = "Hi! I'm <b>ChatGPT</b> bot implemented with OpenAI API 🤖\n\n"
-    reply_text += HELP_MESSAGE
+    reply_text = get_localized_text("welcome", user_id)
+    reply_text += get_localized_text("help", user_id)
 
     await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
     await show_chat_modes_handle(update, context)
@@ -147,7 +155,7 @@ async def help_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     user_id = update.message.from_user.id
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
-    await update.message.reply_text(HELP_MESSAGE, parse_mode=ParseMode.HTML)
+    await update.message.reply_text(get_localized_text("help", user_id), parse_mode=ParseMode.HTML)
 
 
 async def help_group_chat_handle(update: Update, context: CallbackContext):
@@ -155,7 +163,7 @@ async def help_group_chat_handle(update: Update, context: CallbackContext):
      user_id = update.message.from_user.id
      db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
-     text = HELP_GROUP_CHAT_MESSAGE.format(bot_username="@" + context.bot.username)
+     text = get_localized_text("help_group_chat", user_id).format(bot_username="@" + context.bot.username)
 
      await update.message.reply_text(text, parse_mode=ParseMode.HTML)
      await update.message.reply_video(config.help_group_chat_video_path)
@@ -170,7 +178,7 @@ async def retry_handle(update: Update, context: CallbackContext):
 
     dialog_messages = db.get_dialog_messages(user_id, dialog_id=None)
     if len(dialog_messages) == 0:
-        await update.message.reply_text("No message to retry 🤷‍♂️")
+        await update.message.reply_text(get_localized_text("no_message_to_retry", user_id))
         return
 
     last_dialog_message = dialog_messages.pop()
@@ -184,21 +192,27 @@ async def _vision_message_handle_fn(
     logger.info('_vision_message_handle_fn')
     user_id = update.message.from_user.id
     current_model = db.get_user_attribute(user_id, "current_model")
+    if current_model not in config.models["available_text_models"]:
+        current_model = "gpt-5-mini-2025-08-07"
+        db.set_user_attribute(user_id, "current_model", current_model)
 
     if current_model != "gpt-4-vision-preview" and current_model != "gpt-4o":
         await update.message.reply_text(
-            "🥲 Images processing is only available for <b>gpt-4-vision-preview</b> and <b>gpt-4o</b> model. Please change your settings in /settings",
+            get_localized_text("images_processing_not_available", user_id),
             parse_mode=ParseMode.HTML,
         )
         return
 
     chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
+    if chat_mode not in config.chat_modes.keys():
+        chat_mode = "ai_trainer"
+        db.set_user_attribute(user_id, "current_chat_mode", chat_mode)
 
     # new dialog timeout
     if use_new_dialog_timeout:
         if (datetime.now() - db.get_user_attribute(user_id, "last_interaction")).seconds > config.new_dialog_timeout and len(db.get_dialog_messages(user_id)) > 0:
             db.start_new_dialog(user_id)
-            await update.message.reply_text(f"Starting new dialog due to timeout (<b>{config.chat_modes[chat_mode]['name']}</b> mode) ✅", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(get_localized_text("starting_new_dialog_timeout", user_id).format(mode=config.chat_modes[chat_mode]['name']), parse_mode=ParseMode.HTML)
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
     buf = None
@@ -329,7 +343,7 @@ async def _vision_message_handle_fn(
         return
 
 async def unsupport_message_handle(update: Update, context: CallbackContext, message=None):
-    error_text = f"I don't know how to read files or videos. Send the picture in normal mode (Quick Mode)."
+    error_text = get_localized_text("unsupported_message_type", update.message.from_user.id)
     logger.error(error_text)
     await update.message.reply_text(error_text)
     return
@@ -355,19 +369,25 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
 
     user_id = update.message.from_user.id
     chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
+    if chat_mode not in config.chat_modes.keys():
+        chat_mode = "ai_trainer"
+        db.set_user_attribute(user_id, "current_chat_mode", chat_mode)
 
     if chat_mode == "artist":
         await generate_image_handle(update, context, message=message)
         return
 
     current_model = db.get_user_attribute(user_id, "current_model")
+    if current_model not in config.models["available_text_models"]:
+        current_model = "gpt-5-mini-2025-08-07"
+        db.set_user_attribute(user_id, "current_model", current_model)
 
     async def message_handle_fn():
         # new dialog timeout
         if use_new_dialog_timeout:
             if (datetime.now() - db.get_user_attribute(user_id, "last_interaction")).seconds > config.new_dialog_timeout and len(db.get_dialog_messages(user_id)) > 0:
                 db.start_new_dialog(user_id)
-                await update.message.reply_text(f"Starting new dialog due to timeout (<b>{config.chat_modes[chat_mode]['name']}</b> mode) ✅", parse_mode=ParseMode.HTML)
+                await update.message.reply_text(get_localized_text("starting_new_dialog_timeout", user_id).format(mode=config.chat_modes[chat_mode]['name']), parse_mode=ParseMode.HTML)
         db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
         # in case of CancelledError
@@ -381,7 +401,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             await update.message.chat.send_action(action="typing")
 
             if _message is None or len(_message) == 0:
-                 await update.message.reply_text("🥲 You sent <b>empty message</b>. Please, try again!", parse_mode=ParseMode.HTML)
+                 await update.message.reply_text(get_localized_text("empty_message", user_id), parse_mode=ParseMode.HTML)
                  return
 
             dialog_messages = db.get_dialog_messages(user_id, dialog_id=None)
@@ -453,9 +473,9 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
         # send message if some messages were removed from the context
         if n_first_dialog_messages_removed > 0:
             if n_first_dialog_messages_removed == 1:
-                text = "✍️ <i>Note:</i> Your current dialog is too long, so your <b>first message</b> was removed from the context.\n Send /new command to start new dialog"
+                text = get_localized_text("context_removed_first", user_id)
             else:
-                text = f"✍️ <i>Note:</i> Your current dialog is too long, so <b>{n_first_dialog_messages_removed} first messages</b> were removed from the context.\n Send /new command to start new dialog"
+                text = get_localized_text("context_removed_multiple", user_id).format(n_messages=n_first_dialog_messages_removed)
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
     async with user_semaphores[user_id]:
@@ -480,7 +500,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
         try:
             await task
         except asyncio.CancelledError:
-            await update.message.reply_text("✅ Canceled", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(get_localized_text("canceled", user_id), parse_mode=ParseMode.HTML)
         else:
             pass
         finally:
@@ -493,8 +513,7 @@ async def is_previous_message_not_answered_yet(update: Update, context: Callback
 
     user_id = update.message.from_user.id
     if user_semaphores[user_id].locked():
-        text = "⏳ Please <b>wait</b> for a reply to the previous message\n"
-        text += "Or you can /cancel it"
+        text = get_localized_text("wait_for_reply", user_id)
         await update.message.reply_text(text, reply_to_message_id=update.message.id, parse_mode=ParseMode.HTML)
         return True
     else:
@@ -546,7 +565,7 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
         image_urls = await openai_utils.generate_images(message, n_images=config.return_n_generated_images, size=config.image_size)
     except openai.error.InvalidRequestError as e:
         if str(e).startswith("Your request was rejected as a result of our safety system"):
-            text = "🥲 Your request <b>doesn't comply</b> with OpenAI's usage policies.\nWhat did you write there, huh?"
+            text = get_localized_text("image_generation_rejected", user_id)
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             return
         else:
@@ -566,13 +585,19 @@ async def new_dialog_handle(update: Update, context: CallbackContext):
 
     user_id = update.message.from_user.id
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
-    db.set_user_attribute(user_id, "current_model", "gpt-3.5-turbo")
+    db.set_user_attribute(user_id, "current_model", "gpt-5-mini-2025-08-07")
 
     db.start_new_dialog(user_id)
-    await update.message.reply_text("Starting new dialog ✅")
+    await update.message.reply_text(get_localized_text("starting_new_dialog", user_id))
 
     chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
-    await update.message.reply_text(f"{config.chat_modes[chat_mode]['welcome_message']}", parse_mode=ParseMode.HTML)
+    if chat_mode not in config.chat_modes.keys():
+        chat_mode = "ai_trainer"
+        db.set_user_attribute(user_id, "current_chat_mode", chat_mode)
+    
+    language = db.get_user_attribute(user_id, "current_language") or "en"
+    welcome_message = config.chat_modes[chat_mode]['welcome_message'][language]
+    await update.message.reply_text(welcome_message, parse_mode=ParseMode.HTML)
 
 
 async def cancel_handle(update: Update, context: CallbackContext):
@@ -585,12 +610,12 @@ async def cancel_handle(update: Update, context: CallbackContext):
         task = user_tasks[user_id]
         task.cancel()
     else:
-        await update.message.reply_text("<i>Nothing to cancel...</i>", parse_mode=ParseMode.HTML)
+        await update.message.reply_text(get_localized_text("nothing_to_cancel", user_id), parse_mode=ParseMode.HTML)
 
 
-def get_chat_mode_menu(page_index: int):
+def get_chat_mode_menu(page_index: int, user_id: int):
     n_chat_modes_per_page = config.n_chat_modes_per_page
-    text = f"Select <b>chat mode</b> ({len(config.chat_modes)} modes available):"
+    text = get_localized_text("select_chat_mode", user_id).format(n_modes=len(config.chat_modes))
 
     # buttons
     chat_mode_keys = list(config.chat_modes.keys())
@@ -632,7 +657,7 @@ async def show_chat_modes_handle(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
-    text, reply_markup = get_chat_mode_menu(0)
+    text, reply_markup = get_chat_mode_menu(0, user_id)
     await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
@@ -650,7 +675,7 @@ async def show_chat_modes_callback_handle(update: Update, context: CallbackConte
      if page_index < 0:
          return
 
-     text, reply_markup = get_chat_mode_menu(page_index)
+     text, reply_markup = get_chat_mode_menu(page_index, user_id)
      try:
          await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
      except telegram.error.BadRequest as e:
@@ -672,7 +697,8 @@ async def set_chat_mode_handle(update: Update, context: CallbackContext):
 
     await context.bot.send_message(
         update.callback_query.message.chat.id,
-        f"{config.chat_modes[chat_mode]['welcome_message']}",
+        update.callback_query.message.chat.id,
+        f"{config.chat_modes[chat_mode]['welcome_message'][db.get_user_attribute(user_id, 'current_language') or 'en']}",
         parse_mode=ParseMode.HTML
     )
 
@@ -686,7 +712,7 @@ def get_settings_menu(user_id: int):
     for score_key, score_value in score_dict.items():
         text += "🟢" * score_value + "⚪️" * (5 - score_value) + f" – {score_key}\n\n"
 
-    text += "\nSelect <b>model</b>:"
+    text += get_localized_text("select_settings", user_id)
 
     # buttons to choose models
     buttons = []
@@ -747,7 +773,7 @@ async def show_balance_handle(update: Update, context: CallbackContext):
     n_generated_images = db.get_user_attribute(user_id, "n_generated_images")
     n_transcribed_seconds = db.get_user_attribute(user_id, "n_transcribed_seconds")
 
-    details_text = "🏷️ Details:\n"
+    details_text = get_localized_text("details", user_id)
     for model_key in sorted(n_used_tokens_dict.keys()):
         n_input_tokens, n_output_tokens = n_used_tokens_dict[model_key]["n_input_tokens"], n_used_tokens_dict[model_key]["n_output_tokens"]
         total_n_used_tokens += n_input_tokens + n_output_tokens
@@ -773,8 +799,8 @@ async def show_balance_handle(update: Update, context: CallbackContext):
     total_n_spent_dollars += voice_recognition_n_spent_dollars
 
 
-    text = f"You spent <b>{total_n_spent_dollars:.03f}$</b>\n"
-    text += f"You used <b>{total_n_used_tokens}</b> tokens\n\n"
+    text = get_localized_text("spent", user_id).format(amount=f"{total_n_spent_dollars:.03f}")
+    text += get_localized_text("used_tokens", user_id).format(amount=total_n_used_tokens)
     text += details_text
 
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
@@ -782,8 +808,44 @@ async def show_balance_handle(update: Update, context: CallbackContext):
 
 async def edited_message_handle(update: Update, context: CallbackContext):
     if update.edited_message.chat.type == "private":
-        text = "🥲 Unfortunately, message <b>editing</b> is not supported"
+        text = get_localized_text("editing_not_supported", update.edited_message.from_user.id)
         await update.edited_message.reply_text(text, parse_mode=ParseMode.HTML)
+
+
+async def show_language_handle(update: Update, context: CallbackContext):
+    await register_user_if_not_exists(update, context, update.message.from_user)
+    user_id = update.message.from_user.id
+    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+
+    text = get_localized_text("select_language", user_id)
+    
+    keyboard = []
+    for language_code in config.locales.keys():
+        keyboard.append([InlineKeyboardButton(language_code, callback_data=f"set_language|{language_code}")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+
+async def set_language_handle(update: Update, context: CallbackContext):
+    await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
+    user_id = update.callback_query.from_user.id
+
+    query = update.callback_query
+    await query.answer()
+
+    _, language_code = query.data.split("|")
+    db.set_user_attribute(user_id, "current_language", language_code)
+
+    text = get_localized_text("language_set", user_id).format(language=language_code)
+    await context.bot.send_message(
+        update.callback_query.message.chat.id,
+        text,
+        parse_mode=ParseMode.HTML
+    )
+    
+    # Refresh menu if needed or just confirm
+    # For now just confirmation message is enough
 
 
 async def error_handle(update: Update, context: CallbackContext) -> None:
@@ -864,6 +926,9 @@ def run_bot() -> None:
     application.add_handler(CallbackQueryHandler(set_settings_handle, pattern="^set_settings"))
 
     application.add_handler(CommandHandler("balance", show_balance_handle, filters=user_filter))
+    application.add_handler(CommandHandler("language", show_language_handle, filters=user_filter))
+
+    application.add_handler(CallbackQueryHandler(set_language_handle, pattern="^set_language"))
 
     application.add_error_handler(error_handle)
 

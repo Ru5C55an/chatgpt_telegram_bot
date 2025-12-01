@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 OPENAI_COMPLETION_OPTIONS = {
-    "temperature": 0.7,
-    "max_tokens": 1000,
+    "temperature": 1,
+    "max_completion_tokens": 1000,
     "top_p": 1,
     "frequency_penalty": 0,
     "presence_penalty": 0,
@@ -25,11 +25,11 @@ OPENAI_COMPLETION_OPTIONS = {
 
 
 class ChatGPT:
-    def __init__(self, model="gpt-3.5-turbo"):
-        assert model in {"text-davinci-003", "gpt-3.5-turbo-16k", "gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4-1106-preview", "gpt-4-vision-preview"}, f"Unknown model: {model}"
+    def __init__(self, model="gpt-5-mini-2025-08-07"):
+        assert model in {"gpt-5-mini-2025-08-07"}, f"Unknown model: {model}"
         self.model = model
 
-    async def send_message(self, message, dialog_messages=[], chat_mode="assistant"):
+    async def send_message(self, message, dialog_messages=[], chat_mode="ai_trainer"):
         if chat_mode not in config.chat_modes.keys():
             raise ValueError(f"Chat mode {chat_mode} is not supported")
 
@@ -37,7 +37,7 @@ class ChatGPT:
         answer = None
         while answer is None:
             try:
-                if self.model in {"gpt-3.5-turbo-16k", "gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4-1106-preview", "gpt-4-vision-preview"}:
+                if self.model in {"gpt-5-mini-2025-08-07"}:
                     messages = self._generate_prompt_messages(message, dialog_messages, chat_mode)
 
                     r = await openai.ChatCompletion.acreate(
@@ -70,7 +70,7 @@ class ChatGPT:
 
         return answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed
 
-    async def send_message_stream(self, message, dialog_messages=[], chat_mode="assistant"):
+    async def send_message_stream(self, message, dialog_messages=[], chat_mode="ai_trainer"):
         if chat_mode not in config.chat_modes.keys():
             raise ValueError(f"Chat mode {chat_mode} is not supported")
 
@@ -78,7 +78,7 @@ class ChatGPT:
         answer = None
         while answer is None:
             try:
-                if self.model in {"gpt-3.5-turbo-16k", "gpt-3.5-turbo", "gpt-4","gpt-4o", "gpt-4-1106-preview"}:
+                if self.model in {"gpt-5-mini-2025-08-07"}:
                     messages = self._generate_prompt_messages(message, dialog_messages, chat_mode)
 
                     r_gen = await openai.ChatCompletion.acreate(
@@ -131,7 +131,7 @@ class ChatGPT:
         self,
         message,
         dialog_messages=[],
-        chat_mode="assistant",
+        chat_mode="ai_trainer",
         image_buffer: BytesIO = None,
     ):
         n_dialog_messages_before = len(dialog_messages)
@@ -179,7 +179,7 @@ class ChatGPT:
         self,
         message,
         dialog_messages=[],
-        chat_mode="assistant",
+        chat_mode="ai_trainer",
         image_buffer: BytesIO = None,
     ):
         n_dialog_messages_before = len(dialog_messages)
@@ -289,25 +289,10 @@ class ChatGPT:
         answer = answer.strip()
         return answer
 
-    def _count_tokens_from_messages(self, messages, answer, model="gpt-3.5-turbo"):
-        encoding = tiktoken.encoding_for_model(model)
+    def _count_tokens_from_messages(self, messages, answer, model="gpt-5-mini-2025-08-07"):
+        encoding = tiktoken.encoding_for_model("gpt-4") # use gpt-4 encoding for now
 
-        if model == "gpt-3.5-turbo-16k":
-            tokens_per_message = 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
-            tokens_per_name = -1  # if there's a name, the role is omitted
-        elif model == "gpt-3.5-turbo":
-            tokens_per_message = 4
-            tokens_per_name = -1
-        elif model == "gpt-4":
-            tokens_per_message = 3
-            tokens_per_name = 1
-        elif model == "gpt-4-1106-preview":
-            tokens_per_message = 3
-            tokens_per_name = 1
-        elif model == "gpt-4-vision-preview":
-            tokens_per_message = 3
-            tokens_per_name = 1
-        elif model == "gpt-4o":
+        if model == "gpt-5-mini-2025-08-07":
             tokens_per_message = 3
             tokens_per_name = 1
         else:

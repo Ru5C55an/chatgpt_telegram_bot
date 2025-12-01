@@ -196,7 +196,7 @@ async def _vision_message_handle_fn(
         current_model = "gpt-5-mini-2025-08-07"
         db.set_user_attribute(user_id, "current_model", current_model)
 
-    if current_model != "gpt-4-vision-preview" and current_model != "gpt-4o":
+    if current_model not in ["gpt-4-vision-preview", "gpt-4o", "gpt-5-mini-2025-08-07"]:
         await update.message.reply_text(
             get_localized_text("images_processing_not_available", user_id),
             parse_mode=ParseMode.HTML,
@@ -249,6 +249,7 @@ async def _vision_message_handle_fn(
                 dialog_messages=dialog_messages,
                 image_buffer=buf,
                 chat_mode=chat_mode,
+                user_language=db.get_user_attribute(user_id, "current_language") or "en",
             )
         else:
             (
@@ -260,6 +261,7 @@ async def _vision_message_handle_fn(
                 dialog_messages=dialog_messages,
                 image_buffer=buf,
                 chat_mode=chat_mode,
+                user_language=db.get_user_attribute(user_id, "current_language") or "en",
             )
 
             async def fake_gen():
@@ -412,12 +414,13 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
 
             chatgpt_instance = openai_utils.ChatGPT(model=current_model)
             if config.enable_message_streaming:
-                gen = chatgpt_instance.send_message_stream(_message, dialog_messages=dialog_messages, chat_mode=chat_mode)
+                gen = chatgpt_instance.send_message_stream(_message, dialog_messages=dialog_messages, chat_mode=chat_mode, user_language=db.get_user_attribute(user_id, "current_language") or "en")
             else:
                 answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed = await chatgpt_instance.send_message(
                     _message,
                     dialog_messages=dialog_messages,
-                    chat_mode=chat_mode
+                    chat_mode=chat_mode,
+                    user_language=db.get_user_attribute(user_id, "current_language") or "en",
                 )
 
                 async def fake_gen():
@@ -479,14 +482,14 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
     async with user_semaphores[user_id]:
-        if current_model == "gpt-4-vision-preview" or current_model == "gpt-4o" or update.message.photo is not None and len(update.message.photo) > 0:
+        if current_model in ["gpt-4-vision-preview", "gpt-4o", "gpt-5-mini-2025-08-07"] or update.message.photo is not None and len(update.message.photo) > 0:
 
             logger.error(current_model)
             # What is this? ^^^
 
-            if current_model != "gpt-4o" and current_model != "gpt-4-vision-preview":
-                current_model = "gpt-4o"
-                db.set_user_attribute(user_id, "current_model", "gpt-4o")
+            if current_model not in ["gpt-4o", "gpt-4-vision-preview", "gpt-5-mini-2025-08-07"]:
+                current_model = "gpt-5-mini-2025-08-07"
+                db.set_user_attribute(user_id, "current_model", "gpt-5-mini-2025-08-07")
             task = asyncio.create_task(
                 _vision_message_handle_fn(update, context, use_new_dialog_timeout=use_new_dialog_timeout)
             )
@@ -696,7 +699,6 @@ async def set_chat_mode_handle(update: Update, context: CallbackContext):
     db.start_new_dialog(user_id)
 
     await context.bot.send_message(
-        update.callback_query.message.chat.id,
         update.callback_query.message.chat.id,
         f"{config.chat_modes[chat_mode]['welcome_message'][db.get_user_attribute(user_id, 'current_language') or 'en']}",
         parse_mode=ParseMode.HTML

@@ -29,7 +29,7 @@ class ChatGPT:
         assert model in {"gpt-5-mini-2025-08-07"}, f"Unknown model: {model}"
         self.model = model
 
-    async def send_message(self, message, dialog_messages=[], chat_mode="ai_trainer", user_language="en"):
+    async def send_message(self, message, dialog_messages=[], chat_mode="ai_trainer", user_language="en", user_profile=None):
         if chat_mode not in config.chat_modes.keys():
             raise ValueError(f"Chat mode {chat_mode} is not supported")
 
@@ -38,7 +38,7 @@ class ChatGPT:
         while answer is None:
             try:
                 if self.model in {"gpt-5-mini-2025-08-07"}:
-                    messages = self._generate_prompt_messages(message, dialog_messages, chat_mode, user_language=user_language)
+                    messages = self._generate_prompt_messages(message, dialog_messages, chat_mode, user_language=user_language, user_profile=user_profile)
 
                     r = await openai.ChatCompletion.acreate(
                         model=self.model,
@@ -70,7 +70,7 @@ class ChatGPT:
 
         return answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed
 
-    async def send_message_stream(self, message, dialog_messages=[], chat_mode="ai_trainer", user_language="en"):
+    async def send_message_stream(self, message, dialog_messages=[], chat_mode="ai_trainer", user_language="en", user_profile=None):
         if chat_mode not in config.chat_modes.keys():
             raise ValueError(f"Chat mode {chat_mode} is not supported")
 
@@ -79,7 +79,7 @@ class ChatGPT:
         while answer is None:
             try:
                 if self.model in {"gpt-5-mini-2025-08-07"}:
-                    messages = self._generate_prompt_messages(message, dialog_messages, chat_mode, user_language=user_language)
+                    messages = self._generate_prompt_messages(message, dialog_messages, chat_mode, user_language=user_language, user_profile=user_profile)
 
                     r_gen = await openai.ChatCompletion.acreate(
                         model=self.model,
@@ -133,6 +133,7 @@ class ChatGPT:
         dialog_messages=[],
         chat_mode="ai_trainer",
         user_language="en",
+        user_profile=None,
         image_buffer: BytesIO = None,
     ):
         n_dialog_messages_before = len(dialog_messages)
@@ -141,7 +142,7 @@ class ChatGPT:
             try:
                 if self.model in ["gpt-4-vision-preview", "gpt-4o", "gpt-5-mini-2025-08-07"]:
                     messages = self._generate_prompt_messages(
-                        message, dialog_messages, chat_mode, image_buffer, user_language
+                        message, dialog_messages, chat_mode, image_buffer, user_language, user_profile
                     )
                     r = await openai.ChatCompletion.acreate(
                         model=self.model,
@@ -182,6 +183,7 @@ class ChatGPT:
         dialog_messages=[],
         chat_mode="ai_trainer",
         user_language="en",
+        user_profile=None,
         image_buffer: BytesIO = None,
     ):
         n_dialog_messages_before = len(dialog_messages)
@@ -190,7 +192,7 @@ class ChatGPT:
             try:
                 if self.model in ["gpt-4-vision-preview", "gpt-4o", "gpt-5-mini-2025-08-07"]:
                     messages = self._generate_prompt_messages(
-                        message, dialog_messages, chat_mode, image_buffer, user_language
+                        message, dialog_messages, chat_mode, image_buffer, user_language, user_profile
                     )
                     
                     r_gen = await openai.ChatCompletion.acreate(
@@ -252,13 +254,28 @@ class ChatGPT:
     def _encode_image(self, image_buffer: BytesIO) -> bytes:
         return base64.b64encode(image_buffer.read()).decode("utf-8")
 
-    def _generate_prompt_messages(self, message, dialog_messages, chat_mode, image_buffer: BytesIO = None, user_language: str = "en"):
+    def _generate_prompt_messages(self, message, dialog_messages, chat_mode, image_buffer: BytesIO = None, user_language: str = "en", user_profile: dict = None):
         prompt_start = config.chat_modes[chat_mode]["prompt_start"]
         # Handle localized prompt_start
         if isinstance(prompt_start, dict):
             prompt = prompt_start.get(user_language, prompt_start.get("en", list(prompt_start.values())[0]))
         else:
             prompt = prompt_start
+        
+        # Append user profile information to system prompt if available
+        if user_profile and any(user_profile.values()):
+            prompt += "\n\nUser Profile:"
+            if user_profile.get("height"):
+                prompt += f"\n- Height: {user_profile['height']} cm"
+            if user_profile.get("weight"):
+                prompt += f"\n- Weight: {user_profile['weight']} kg"
+            if user_profile.get("fitness_level"):
+                prompt += f"\n- Fitness Level: {user_profile['fitness_level']}"
+            if user_profile.get("goals"):
+                prompt += f"\n- Goals: {user_profile['goals']}"
+            if user_profile.get("gender"):
+                prompt += f"\n- Gender: {user_profile['gender']}"
+            prompt += "\n\nUse this information to personalize your training recommendations and advice."
 
         messages = [{"role": "system", "content": prompt}]
         

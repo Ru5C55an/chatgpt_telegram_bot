@@ -98,6 +98,15 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
     if db.get_user_attribute(user.id, "current_language") is None:
         db.set_user_attribute(user.id, "current_language", "en")
 
+    if db.get_user_attribute(user.id, "user_profile") is None:
+        db.set_user_attribute(user.id, "user_profile", {
+            "height": None,
+            "weight": None,
+            "fitness_level": None,
+            "goals": None,
+            "gender": None,
+        })
+
     # back compatibility for n_used_tokens field
     n_used_tokens = db.get_user_attribute(user.id, "n_used_tokens")
     if isinstance(n_used_tokens, int) or isinstance(n_used_tokens, float):  # old format
@@ -243,6 +252,7 @@ async def _vision_message_handle_fn(
         ]
 
         chatgpt_instance = openai_utils.ChatGPT(model=current_model)
+        user_profile = db.get_user_attribute(user_id, "user_profile") or {}
         if config.enable_message_streaming:
             gen = chatgpt_instance.send_vision_message_stream(
                 message,
@@ -250,6 +260,7 @@ async def _vision_message_handle_fn(
                 image_buffer=buf,
                 chat_mode=chat_mode,
                 user_language=db.get_user_attribute(user_id, "current_language") or "en",
+                user_profile=user_profile,
             )
         else:
             (
@@ -262,6 +273,7 @@ async def _vision_message_handle_fn(
                 image_buffer=buf,
                 chat_mode=chat_mode,
                 user_language=db.get_user_attribute(user_id, "current_language") or "en",
+                user_profile=user_profile,
             )
 
             async def fake_gen():
@@ -370,6 +382,34 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
     if await is_previous_message_not_answered_yet(update, context): return
 
     user_id = update.message.from_user.id
+    
+    # Handle profile field text input
+    if "profile_field_editing" in context.user_data:
+        field = context.user_data["profile_field_editing"]
+        value = _message.strip()
+        profile = db.get_user_attribute(user_id, "user_profile") or {}
+        
+        if field == "height" or field == "weight":
+            try:
+                numeric_value = float(value)
+                profile[field] = numeric_value
+                db.set_user_attribute(user_id, "user_profile", profile)
+                text = get_localized_text("profile_updated", user_id)
+                del context.user_data["profile_field_editing"]
+                await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+                return
+            except ValueError:
+                text = get_localized_text("profile_invalid_number", user_id)
+                await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+                return
+        elif field == "goals":
+            profile[field] = value
+            db.set_user_attribute(user_id, "user_profile", profile)
+            text = get_localized_text("profile_updated", user_id)
+            del context.user_data["profile_field_editing"]
+            await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+            return
+    
     chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
     if chat_mode not in config.chat_modes.keys():
         chat_mode = "ai_trainer"
@@ -413,14 +453,16 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             }[config.chat_modes[chat_mode]["parse_mode"]]
 
             chatgpt_instance = openai_utils.ChatGPT(model=current_model)
+            user_profile = db.get_user_attribute(user_id, "user_profile") or {}
             if config.enable_message_streaming:
-                gen = chatgpt_instance.send_message_stream(_message, dialog_messages=dialog_messages, chat_mode=chat_mode, user_language=db.get_user_attribute(user_id, "current_language") or "en")
+                gen = chatgpt_instance.send_message_stream(_message, dialog_messages=dialog_messages, chat_mode=chat_mode, user_language=db.get_user_attribute(user_id, "current_language") or "en", user_profile=user_profile)
             else:
                 answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed = await chatgpt_instance.send_message(
                     _message,
                     dialog_messages=dialog_messages,
                     chat_mode=chat_mode,
                     user_language=db.get_user_attribute(user_id, "current_language") or "en",
+                    user_profile=user_profile,
                 )
 
                 async def fake_gen():
@@ -850,6 +892,97 @@ async def set_language_handle(update: Update, context: CallbackContext):
     # For now just confirmation message is enough
 
 
+# Profile Management Handlers
+async def show_profile_handle(update: Update, context: CallbackContext):
+    await register_user_if_not_exists(update, context, update.message.from_user)
+    user_id = update.message.from_user.id
+    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+
+    profile = db.get_user_attribute(user_id, "user_profile") or {}
+    
+    # Format profile data
+    height = f"{profile['height']} cm" if profile.get("height") else "-"
+    weight = f"{profile['weight']} kg" if profile.get("weight") else "-"
+    fitness_level = profile.get("fitness_level") or "-"
+    goals = profile.get("goals") or "-"
+    gender = profile.get("gender") or "-"
+    
+    text = get_localized_text("profile_title", user_id) + "\n\n"
+    text += get_localized_text("profile_current", user_id).format(
+        height=height, weight=weight, fitness_level=fitness_level, goals=goals, gender=gender
+    )
+    text += "\n\n" + get_localized_text("profile_select_field", user_id)
+    
+    keyboard = [
+        [InlineKeyboardButton(get_localized_text("button_height", user_id), callback_data="profile_edit|height")],
+        [InlineKeyboardButton(get_localized_text("button_weight", user_id), callback_data="profile_edit|weight")],
+        [InlineKeyboardButton(get_localized_text("button_fitness_level", user_id), callback_data="profile_edit|fitness_level")],
+        [InlineKeyboardButton(get_localized_text("button_goals", user_id), callback_data="profile_edit|goals")],
+        [InlineKeyboardButton(get_localized_text("button_gender", user_id), callback_data="profile_edit|gender")],
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+
+async def profile_edit_callback_handle(update: Update, context: CallbackContext):
+    await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
+    user_id = update.callback_query.from_user.id
+    query = update.callback_query
+    await query.answer()
+
+    _, field = query.data.split("|")
+    context.user_data["profile_field_editing"] = field
+    
+    if field == "fitness_level":
+        text = get_localized_text("profile_select_fitness_level", user_id)
+        keyboard = [
+            [InlineKeyboardButton(get_localized_text("fitness_level_beginner", user_id), callback_data="profile_set|fitness_level|beginner")],
+            [InlineKeyboardButton(get_localized_text("fitness_level_intermediate", user_id), callback_data="profile_set|fitness_level|intermediate")],
+            [InlineKeyboardButton(get_localized_text("fitness_level_advanced", user_id), callback_data="profile_set|fitness_level|advanced")],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    elif field == "gender":
+        text = get_localized_text("profile_select_gender", user_id)
+        keyboard = [
+            [InlineKeyboardButton(get_localized_text("gender_male", user_id), callback_data="profile_set|gender|male")],
+            [InlineKeyboardButton(get_localized_text("gender_female", user_id), callback_data="profile_set|gender|female")],
+            [InlineKeyboardButton(get_localized_text("gender_other", user_id), callback_data="profile_set|gender|other")],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    else:
+        if field == "height":
+            text = get_localized_text("profile_enter_height", user_id)
+        elif field == "weight":
+            text = get_localized_text("profile_enter_weight", user_id)
+        elif field == "goals":
+            text = get_localized_text("profile_enter_goals", user_id)
+        
+        await context.bot.send_message(user_id, text, parse_mode=ParseMode.HTML)
+        try:
+            await query.delete_message()
+        except:
+            pass
+
+
+async def profile_set_callback_handle(update: Update, context: CallbackContext):
+    await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
+    user_id = update.callback_query.from_user.id
+    query = update.callback_query
+    await query.answer()
+
+    _, field, value = query.data.split("|")
+    
+    profile = db.get_user_attribute(user_id, "user_profile") or {}
+    profile[field] = value
+    db.set_user_attribute(user_id, "user_profile", profile)
+    
+    text = get_localized_text("profile_updated", user_id)
+    await query.edit_message_text(text, parse_mode=ParseMode.HTML)
+
+
 async def error_handle(update: Update, context: CallbackContext) -> None:
     logger.error(msg="Exception while handling an update:", exc_info=context.error)
 
@@ -929,8 +1062,11 @@ def run_bot() -> None:
 
     application.add_handler(CommandHandler("balance", show_balance_handle, filters=user_filter))
     application.add_handler(CommandHandler("language", show_language_handle, filters=user_filter))
-
     application.add_handler(CallbackQueryHandler(set_language_handle, pattern="^set_language"))
+    
+    application.add_handler(CommandHandler("profile", show_profile_handle, filters=user_filter))
+    application.add_handler(CallbackQueryHandler(profile_edit_callback_handle, pattern="^profile_edit"))
+    application.add_handler(CallbackQueryHandler(profile_set_callback_handle, pattern="^profile_set"))
 
     application.add_error_handler(error_handle)
 

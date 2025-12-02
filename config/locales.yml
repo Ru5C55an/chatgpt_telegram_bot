@@ -8,6 +8,7 @@ en:
     ⚪ /settings – Show settings
     ⚪ /balance – Show balance
     ⚪ /language – Select language
+    ⚪ /profile – Manage your profile
     ⚪ /help – Show help
 
     🎨 Generate images from text prompts in <b>👩‍🎨 Artist</b> /mode
@@ -41,6 +42,36 @@ en:
   select_language: "Select <b>language</b>:"
   language_set: "Language set to <b>{language}</b>"
   starting_new_dialog: "Starting new dialog ✅"
+  profile_title: "👤 Your Profile"
+  profile_empty: "Your profile is empty. Please fill in your information to get personalized training recommendations."
+  profile_current: |
+    <b>Height:</b> {height}
+    <b>Weight:</b> {weight}
+    <b>Fitness Level:</b> {fitness_level}
+    <b>Goals:</b> {goals}
+    <b>Gender:</b> {gender}
+  profile_select_field: "Select a field to update:"
+  profile_enter_height: "Enter your height in cm (e.g., 175):"
+  profile_enter_weight: "Enter your weight in kg (e.g., 70):"
+  profile_enter_goals: "Enter your fitness goals (e.g., lose weight, build muscle, improve endurance):"
+  profile_select_fitness_level: "Select your current fitness level:"
+  profile_select_gender: "Select your gender:"
+  profile_updated: "✅ Profile updated successfully!"
+  profile_invalid_number: "❌ Invalid number. Please enter a valid number."
+  profile_canceled: "Profile update canceled."
+  fitness_level_beginner: "Beginner"
+  fitness_level_intermediate: "Intermediate"
+  fitness_level_advanced: "Advanced"
+  gender_male: "Male"
+  gender_female: "Female"
+  gender_other: "Other"
+  button_height: "Height"
+  button_weight: "Weight"
+  button_fitness_level: "Fitness Level"
+  button_goals: "Goals"
+  button_gender: "Gender"
+  button_back: "« Back"
+  button_cancel: "Cancel"
 
 ru:
   welcome: "Привет! Я ChatGPT бот, реализованный с помощью OpenAI API 🤖\n\n"
@@ -52,6 +83,7 @@ ru:
     ⚪ /settings – Показать настройки
     ⚪ /balance – Показать баланс
     ⚪ /language – Выбрать язык
+    ⚪ /profile – Управление профилем
     ⚪ /help – Показать помощь
 
     🎨 Генерируйте изображения по текстовым подсказкам в режиме <b>👩‍🎨 Художник</b> /mode
@@ -85,3 +117,33 @@ ru:
   select_language: "Выберите <b>язык</b>:"
   language_set: "Язык установлен на <b>{language}</b>"
   starting_new_dialog: "Начинаю новый диалог ✅"
+  profile_title: "👤 Ваш профиль"
+  profile_empty: "Ваш профиль пуст. Пожалуйста, заполните информацию для получения персонализированных рекомендаций по тренировкам."
+  profile_current: |
+    <b>Рост:</b> {height}
+    <b>Вес:</b> {weight}
+    <b>Уровень подготовки:</b> {fitness_level}
+    <b>Цели:</b> {goals}
+    <b>Пол:</b> {gender}
+  profile_select_field: "Выберите поле для обновления:"
+  profile_enter_height: "Введите ваш рост в см (например, 175):"
+  profile_enter_weight: "Введите ваш вес в кг (например, 70):"
+  profile_enter_goals: "Введите ваши фитнес-цели (например, похудеть, набрать мышечную массу, улучшить выносливость):"
+  profile_select_fitness_level: "Выберите ваш текущий уровень подготовки:"
+  profile_select_gender: "Выберите ваш пол:"
+  profile_updated: "✅ Профиль успешно обновлен!"
+  profile_invalid_number: "❌ Неверное число. Пожалуйста, введите корректное число."
+  profile_canceled: "Обновление профиля отменено."
+  fitness_level_beginner: "Новичок"
+  fitness_level_intermediate: "Средний"
+  fitness_level_advanced: "Продвинутый"
+  gender_male: "Мужской"
+  gender_female: "Женский"
+  gender_other: "Другой"
+  button_height: "Рост"
+  button_weight: "Вес"
+  button_fitness_level: "Уровень подготовки"
+  button_goals: "Цели"
+  button_gender: "Пол"
+  button_back: "« Назад"
+  button_cancel: "Отмена"

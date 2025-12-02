@@ -47,6 +47,13 @@ class Database:
             "current_chat_mode": "ai_trainer",
             "current_model": "gpt-5-mini-2025-08-07",
             "current_language": "en",
+            "user_profile": {
+                "height": None,
+                "weight": None,
+                "fitness_level": None,
+                "goals": None,
+                "gender": None,
+            },
 
             "n_used_tokens": {},
 

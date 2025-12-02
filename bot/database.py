@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 
 import config
+import constants as C
 
 
 class Database:
@@ -44,15 +45,15 @@ class Database:
             "first_seen": datetime.now(),
 
             "current_dialog_id": None,
-            "current_chat_mode": "ai_trainer",
-            "current_model": "gpt-5-mini-2025-08-07",
-            "current_language": "en",
+            "current_chat_mode": C.DEFAULT_CHAT_MODE,
+            "current_model": C.DEFAULT_MODEL,
+            "current_language": C.DEFAULT_LANGUAGE,
             "user_profile": {
-                "height": None,
-                "weight": None,
-                "fitness_level": None,
-                "goals": None,
-                "gender": None,
+                C.PROFILE_HEIGHT: None,
+                C.PROFILE_WEIGHT: None,
+                C.PROFILE_FITNESS_LEVEL: None,
+                C.PROFILE_GOALS: None,
+                C.PROFILE_GENDER: None,
             },
 
             "n_used_tokens": {},

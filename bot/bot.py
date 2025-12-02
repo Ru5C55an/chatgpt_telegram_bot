@@ -30,6 +30,7 @@ from telegram.constants import ParseMode, ChatAction
 import config
 import database
 import openai_utils
+import constants as C
 
 import base64
 
@@ -92,23 +93,23 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
     if user.id not in user_semaphores:
         user_semaphores[user.id] = asyncio.Semaphore(1)
 
-    if db.get_user_attribute(user.id, "current_model") is None:
-        db.set_user_attribute(user.id, "current_model", "gpt-5-mini-2025-08-07")
+    if db.get_user_attribute(user.id, C.DB_CURRENT_MODEL) is None:
+        db.set_user_attribute(user.id, C.DB_CURRENT_MODEL, C.DEFAULT_MODEL)
 
-    if db.get_user_attribute(user.id, "current_language") is None:
-        db.set_user_attribute(user.id, "current_language", "en")
+    if db.get_user_attribute(user.id, C.DB_CURRENT_LANGUAGE) is None:
+        db.set_user_attribute(user.id, C.DB_CURRENT_LANGUAGE, C.DEFAULT_LANGUAGE)
 
-    if db.get_user_attribute(user.id, "user_profile") is None:
-        db.set_user_attribute(user.id, "user_profile", {
-            "height": None,
-            "weight": None,
-            "fitness_level": None,
-            "goals": None,
-            "gender": None,
+    if db.get_user_attribute(user.id, C.DB_USER_PROFILE) is None:
+        db.set_user_attribute(user.id, C.DB_USER_PROFILE, {
+            C.PROFILE_HEIGHT: None,
+            C.PROFILE_WEIGHT: None,
+            C.PROFILE_FITNESS_LEVEL: None,
+            C.PROFILE_GOALS: None,
+            C.PROFILE_GENDER: None,
         })
 
     # back compatibility for n_used_tokens field
-    n_used_tokens = db.get_user_attribute(user.id, "n_used_tokens")
+    n_used_tokens = db.get_user_attribute(user.id, C.DB_N_USED_TOKENS)
     if isinstance(n_used_tokens, int) or isinstance(n_used_tokens, float):  # old format
         new_n_used_tokens = {
             "gpt-3.5-turbo": {
@@ -157,7 +158,7 @@ async def start_handle(update: Update, context: CallbackContext):
     reply_text += get_localized_text("help", user_id)
 
     await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
-    await show_chat_modes_handle(update, context)
+    await show_profile_handle(update, context)
 
 
 async def help_handle(update: Update, context: CallbackContext):
@@ -384,29 +385,29 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
     user_id = update.message.from_user.id
     
     # Handle profile field text input
-    if "profile_field_editing" in context.user_data:
-        field = context.user_data["profile_field_editing"]
+    if C.CONTEXT_PROFILE_FIELD_EDITING in context.user_data:
+        field = context.user_data[C.CONTEXT_PROFILE_FIELD_EDITING]
         value = _message.strip()
-        profile = db.get_user_attribute(user_id, "user_profile") or {}
+        profile = db.get_user_attribute(user_id, C.DB_USER_PROFILE) or {}
         
-        if field == "height" or field == "weight":
+        if field == C.PROFILE_HEIGHT or field == C.PROFILE_WEIGHT:
             try:
                 numeric_value = float(value)
                 profile[field] = numeric_value
-                db.set_user_attribute(user_id, "user_profile", profile)
+                db.set_user_attribute(user_id, C.DB_USER_PROFILE, profile)
                 text = get_localized_text("profile_updated", user_id)
-                del context.user_data["profile_field_editing"]
+                del context.user_data[C.CONTEXT_PROFILE_FIELD_EDITING]
                 await update.message.reply_text(text, parse_mode=ParseMode.HTML)
                 return
             except ValueError:
                 text = get_localized_text("profile_invalid_number", user_id)
                 await update.message.reply_text(text, parse_mode=ParseMode.HTML)
                 return
-        elif field == "goals":
+        elif field == C.PROFILE_GOALS:
             profile[field] = value
-            db.set_user_attribute(user_id, "user_profile", profile)
+            db.set_user_attribute(user_id, C.DB_USER_PROFILE, profile)
             text = get_localized_text("profile_updated", user_id)
-            del context.user_data["profile_field_editing"]
+            del context.user_data[C.CONTEXT_PROFILE_FIELD_EDITING]
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             return
     
@@ -863,9 +864,16 @@ async def show_language_handle(update: Update, context: CallbackContext):
 
     text = get_localized_text("select_language", user_id)
     
+    # Language display with flags and native names
+    language_display = {
+        "en": "🇺🇸 English",
+        "ru": "🇷🇺 Русский"
+    }
+    
     keyboard = []
     for language_code in config.locales.keys():
-        keyboard.append([InlineKeyboardButton(language_code, callback_data=f"set_language|{language_code}")])
+        display_name = language_display.get(language_code, language_code)
+        keyboard.append([InlineKeyboardButton(display_name, callback_data=f"set_language|{language_code}")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
@@ -901,11 +909,11 @@ async def show_profile_handle(update: Update, context: CallbackContext):
     profile = db.get_user_attribute(user_id, "user_profile") or {}
     
     # Format profile data
-    height = f"{profile['height']} cm" if profile.get("height") else "-"
-    weight = f"{profile['weight']} kg" if profile.get("weight") else "-"
-    fitness_level = profile.get("fitness_level") or "-"
-    goals = profile.get("goals") or "-"
-    gender = profile.get("gender") or "-"
+    height = f"{profile[C.PROFILE_HEIGHT]} cm" if profile.get(C.PROFILE_HEIGHT) else "-"
+    weight = f"{profile[C.PROFILE_WEIGHT]} kg" if profile.get(C.PROFILE_WEIGHT) else "-"
+    fitness_level = profile.get(C.PROFILE_FITNESS_LEVEL) or "-"
+    goals = profile.get(C.PROFILE_GOALS) or "-"
+    gender = profile.get(C.PROFILE_GENDER) or "-"
     
     text = get_localized_text("profile_title", user_id) + "\n\n"
     text += get_localized_text("profile_current", user_id).format(
@@ -932,9 +940,9 @@ async def profile_edit_callback_handle(update: Update, context: CallbackContext)
     await query.answer()
 
     _, field = query.data.split("|")
-    context.user_data["profile_field_editing"] = field
+    context.user_data[C.CONTEXT_PROFILE_FIELD_EDITING] = field
     
-    if field == "fitness_level":
+    if field == C.PROFILE_FITNESS_LEVEL:
         text = get_localized_text("profile_select_fitness_level", user_id)
         keyboard = [
             [InlineKeyboardButton(get_localized_text("fitness_level_beginner", user_id), callback_data="profile_set|fitness_level|beginner")],
@@ -943,7 +951,7 @@ async def profile_edit_callback_handle(update: Update, context: CallbackContext)
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-    elif field == "gender":
+    elif field == C.PROFILE_GENDER:
         text = get_localized_text("profile_select_gender", user_id)
         keyboard = [
             [InlineKeyboardButton(get_localized_text("gender_male", user_id), callback_data="profile_set|gender|male")],
@@ -953,11 +961,11 @@ async def profile_edit_callback_handle(update: Update, context: CallbackContext)
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     else:
-        if field == "height":
+        if field == C.PROFILE_HEIGHT:
             text = get_localized_text("profile_enter_height", user_id)
-        elif field == "weight":
+        elif field == C.PROFILE_WEIGHT:
             text = get_localized_text("profile_enter_weight", user_id)
-        elif field == "goals":
+        elif field == C.PROFILE_GOALS:
             text = get_localized_text("profile_enter_goals", user_id)
         
         await context.bot.send_message(user_id, text, parse_mode=ParseMode.HTML)
@@ -975,9 +983,9 @@ async def profile_set_callback_handle(update: Update, context: CallbackContext):
 
     _, field, value = query.data.split("|")
     
-    profile = db.get_user_attribute(user_id, "user_profile") or {}
+    profile = db.get_user_attribute(user_id, C.DB_USER_PROFILE) or {}
     profile[field] = value
-    db.set_user_attribute(user_id, "user_profile", profile)
+    db.set_user_attribute(user_id, C.DB_USER_PROFILE, profile)
     
     text = get_localized_text("profile_updated", user_id)
     await query.edit_message_text(text, parse_mode=ParseMode.HTML)

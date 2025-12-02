@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 OPENAI_COMPLETION_OPTIONS = {
     "temperature": 1,
-    "max_completion_tokens": 1000,
+    "max_completion_tokens": 4000,
     "top_p": 1,
     "frequency_penalty": 0,
     "presence_penalty": 0,
@@ -276,6 +276,9 @@ class ChatGPT:
             if user_profile.get("gender"):
                 prompt += f"\n- Gender: {user_profile['gender']}"
             prompt += "\n\nUse this information to personalize your training recommendations and advice."
+        
+        # Add instruction about response length and structure
+        prompt += "\n\nIMPORTANT: Keep your responses concise, well-structured and complete. Be brief and to the point. If your response is getting long, organize it with clear sections and ensure each thought is finished. Always end your response at a natural stopping point, not mid-sentence or mid-thought."
 
         messages = [{"role": "system", "content": prompt}]
         

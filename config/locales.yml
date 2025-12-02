@@ -9,6 +9,7 @@ en:
     ⚪ /balance – Show balance
     ⚪ /language – Select language
     ⚪ /profile – Manage your profile
+    ⚪ /subscribe – Premium subscription
     ⚪ /help – Show help
 
     🎨 Generate images from text prompts in <b>👩‍🎨 Artist</b> /mode
@@ -33,11 +34,15 @@ en:
   wait_for_reply: "⏳ Please <b>wait</b> for a reply to the previous message\nOr you can /cancel it"
   canceled: "✅ Canceled"
   nothing_to_cancel: "<i>Nothing to cancel...</i>"
+  voice_recognition_unavailable: "🥲 Voice recognition is not available (Permission denied for whisper-1 model). Please contact admin."
+  voice_processing_error: "🥲 Error processing voice message. Please try again later."
+  error_message: "🥲 Something went wrong: {reason}"
   select_chat_mode: "Select <b>chat mode</b> ({n_modes} modes available):"
   select_settings: "\nSelect <b>model</b>:"
   details: "🏷️ Details:\n"
   spent: "You spent <b>{amount}$</b>\n"
   used_tokens: "You used <b>{amount}</b> tokens\n\n"
+  unsupported_message_type: "🥲 I can't understand this message type. Please send me text, voice message or image."
   editing_not_supported: "🥲 Unfortunately, message <b>editing</b> is not supported"
   select_language: "Select <b>language</b>:"
   language_set: "Language set to <b>{language}</b>"
@@ -72,6 +77,24 @@ en:
   button_gender: "👤 Gender"
   button_back: "« Back"
   button_cancel: "Cancel"
+  
+  # Subscription
+  subscription_title: "🌟 Premium Subscription"
+  subscription_description: |
+    Support the bot and get premium status!
+    
+    <b>Premium Benefits:</b>
+    ✨ Unlimited access to AI Trainer
+    ✨ Priority support
+    ✨ Support future development
+    
+    <b>Price:</b> 100 Stars / month
+  subscription_button: "Subscribe for 100 Stars"
+  subscription_success: "🎉 Thank you! Your subscription is active until <b>{expiry_date}</b>."
+  subscription_status_premium: "🌟 Premium active until <b>{expiry_date}</b>"
+  subscription_status_free: "Free plan"
+  subscription_check_command: "Check status: /subscription"
+  payment_error: "Something went wrong..."
 
 ru:
   welcome: "Привет! Я ChatGPT бот, реализованный с помощью OpenAI API 🤖\n\n"
@@ -84,6 +107,7 @@ ru:
     ⚪ /balance – Показать баланс
     ⚪ /language – Выбрать язык
     ⚪ /profile – Управление профилем
+    ⚪ /subscribe – Премиум подписка
     ⚪ /help – Показать помощь
 
     🎨 Генерируйте изображения по текстовым подсказкам в режиме <b>👩‍🎨 Художник</b> /mode
@@ -108,11 +132,15 @@ ru:
   wait_for_reply: "⏳ Пожалуйста, <b>подождите</b> ответа на предыдущее сообщение\nИли вы можете /cancel его"
   canceled: "✅ Отменено"
   nothing_to_cancel: "<i>Нечего отменять...</i>"
+  voice_recognition_unavailable: "🥲 Распознавание голоса недоступно (Нет прав для модели whisper-1). Пожалуйста, свяжитесь с администратором."
+  voice_processing_error: "🥲 Ошибка обработки голосового сообщения. Пожалуйста, попробуйте позже."
+  error_message: "🥲 Что-то пошло не так: {reason}"
   select_chat_mode: "Выберите <b>режим чата</b> (доступно {n_modes} режимов):"
   select_settings: "\nВыберите <b>модель</b>:"
   details: "🏷️ Детали:\n"
   spent: "Вы потратили <b>{amount}$</b>\n"
   used_tokens: "Вы использовали <b>{amount}</b> токенов\n\n"
+  unsupported_message_type: "🥲 Я не понимаю этот тип сообщения. Пожалуйста, отправьте мне текст, голосовое сообщение или изображение."
   editing_not_supported: "🥲 К сожалению, <b>редактирование</b> сообщений не поддерживается"
   select_language: "Выберите <b>язык</b>:"
   language_set: "Язык установлен на <b>{language}</b>"
@@ -147,3 +175,21 @@ ru:
   button_gender: "👤 Пол"
   button_back: "« Назад"
   button_cancel: "Отмена"
+
+  # Subscription
+  subscription_title: "🌟 Премиум Подписка"
+  subscription_description: |
+    Поддержите бота и получите премиум статус!
+    
+    <b>Преимущества Премиум:</b>
+    ✨ Безлимитный доступ к AI Тренеру
+    ✨ Приоритетная поддержка
+    ✨ Поддержка развития проекта
+    
+    <b>Цена:</b> 100 Stars / месяц
+  subscription_button: "Подписаться за 100 Stars"
+  subscription_success: "🎉 Спасибо! Ваша подписка активна до <b>{expiry_date}</b>."
+  subscription_status_premium: "🌟 Премиум активен до <b>{expiry_date}</b>"
+  subscription_status_free: "Бесплатный план"
+  subscription_check_command: "Проверить статус: /subscription"
+  payment_error: "Что-то пошло не так..."

@@ -28,3 +28,15 @@ CONTEXT_PROFILE_FIELD_EDITING = "profile_field_editing"
 DEFAULT_MODEL = "gpt-5-mini-2025-08-07"
 DEFAULT_LANGUAGE = "en"
 DEFAULT_CHAT_MODE = "ai_trainer"
+
+# Subscription keys
+DB_SUBSCRIPTION_STATUS = "subscription_status"
+DB_SUBSCRIPTION_EXPIRY = "subscription_expiry"
+DB_SUBSCRIPTION_HISTORY = "subscription_history"
+
+# Subscription settings
+SUBSCRIPTION_STATUS_FREE = "free"
+SUBSCRIPTION_STATUS_PREMIUM = "premium"
+SUBSCRIPTION_PRICE_STARS = 1
+SUBSCRIPTION_DURATION_DAYS = 1
+SUBSCRIPTION_PAYLOAD_MONTHLY = "premium_subscription_monthly"

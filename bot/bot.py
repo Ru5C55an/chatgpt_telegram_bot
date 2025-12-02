@@ -4,7 +4,7 @@ import asyncio
 import traceback
 import html
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import openai
 
 import telegram
@@ -13,7 +13,8 @@ from telegram import (
     User,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    BotCommand
+    BotCommand,
+    LabeledPrice
 )
 from telegram.ext import (
     Application,
@@ -22,6 +23,7 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
+    PreCheckoutQueryHandler,
     AIORateLimiter,
     filters
 )
@@ -117,15 +119,16 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
                 "n_output_tokens": n_used_tokens
             }
         }
-        db.set_user_attribute(user.id, "n_used_tokens", new_n_used_tokens)
+        db.set_user_attribute(user.id, C.DB_N_USED_TOKENS, new_n_used_tokens)
+        db.set_user_attribute(user.id, C.DB_N_USED_TOKENS, new_n_used_tokens)
 
     # voice message transcription
-    if db.get_user_attribute(user.id, "n_transcribed_seconds") is None:
-        db.set_user_attribute(user.id, "n_transcribed_seconds", 0.0)
+    if db.get_user_attribute(user.id, C.DB_N_TRANSCRIBED_SECONDS) is None:
+        db.set_user_attribute(user.id, C.DB_N_TRANSCRIBED_SECONDS, 0.0)
 
     # image generation
-    if db.get_user_attribute(user.id, "n_generated_images") is None:
-        db.set_user_attribute(user.id, "n_generated_images", 0)
+    if db.get_user_attribute(user.id, C.DB_N_GENERATED_IMAGES) is None:
+        db.set_user_attribute(user.id, C.DB_N_GENERATED_IMAGES, 0)
 
 
 async def is_bot_mentioned(update: Update, context: CallbackContext):
@@ -151,7 +154,7 @@ async def start_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     user_id = update.message.from_user.id
 
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
     db.start_new_dialog(user_id)
 
     reply_text = get_localized_text("welcome", user_id)
@@ -164,14 +167,14 @@ async def start_handle(update: Update, context: CallbackContext):
 async def help_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     user_id = update.message.from_user.id
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
     await update.message.reply_text(get_localized_text("help", user_id), parse_mode=ParseMode.HTML)
 
 
 async def help_group_chat_handle(update: Update, context: CallbackContext):
      await register_user_if_not_exists(update, context, update.message.from_user)
      user_id = update.message.from_user.id
-     db.set_user_attribute(user_id, "last_interaction", datetime.now())
+     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
      text = get_localized_text("help_group_chat", user_id).format(bot_username="@" + context.bot.username)
 
@@ -184,7 +187,7 @@ async def retry_handle(update: Update, context: CallbackContext):
     if await is_previous_message_not_answered_yet(update, context): return
 
     user_id = update.message.from_user.id
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     dialog_messages = db.get_dialog_messages(user_id, dialog_id=None)
     if len(dialog_messages) == 0:
@@ -201,10 +204,10 @@ async def _vision_message_handle_fn(
 ):
     logger.info('_vision_message_handle_fn')
     user_id = update.message.from_user.id
-    current_model = db.get_user_attribute(user_id, "current_model")
+    current_model = db.get_user_attribute(user_id, C.DB_CURRENT_MODEL)
     if current_model not in config.models["available_text_models"]:
         current_model = "gpt-5-mini-2025-08-07"
-        db.set_user_attribute(user_id, "current_model", current_model)
+        db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, current_model)
 
     if current_model not in ["gpt-4-vision-preview", "gpt-4o", "gpt-5-mini-2025-08-07"]:
         await update.message.reply_text(
@@ -213,17 +216,17 @@ async def _vision_message_handle_fn(
         )
         return
 
-    chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
+    chat_mode = db.get_user_attribute(user_id, C.DB_CURRENT_CHAT_MODE)
     if chat_mode not in config.chat_modes.keys():
         chat_mode = "ai_trainer"
-        db.set_user_attribute(user_id, "current_chat_mode", chat_mode)
+        db.set_user_attribute(user_id, C.DB_CURRENT_CHAT_MODE, chat_mode)
 
     # new dialog timeout
     if use_new_dialog_timeout:
-        if (datetime.now() - db.get_user_attribute(user_id, "last_interaction")).seconds > config.new_dialog_timeout and len(db.get_dialog_messages(user_id)) > 0:
+        if (datetime.now() - db.get_user_attribute(user_id, C.DB_LAST_INTERACTION)).seconds > config.new_dialog_timeout and len(db.get_dialog_messages(user_id)) > 0:
             db.start_new_dialog(user_id)
             await update.message.reply_text(get_localized_text("starting_new_dialog_timeout", user_id).format(mode=config.chat_modes[chat_mode]['name']), parse_mode=ParseMode.HTML)
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     buf = None
     if update.message.photo:
@@ -253,14 +256,14 @@ async def _vision_message_handle_fn(
         ]
 
         chatgpt_instance = openai_utils.ChatGPT(model=current_model)
-        user_profile = db.get_user_attribute(user_id, "user_profile") or {}
+        user_profile = db.get_user_attribute(user_id, C.DB_USER_PROFILE) or {}
         if config.enable_message_streaming:
             gen = chatgpt_instance.send_vision_message_stream(
                 message,
                 dialog_messages=dialog_messages,
                 image_buffer=buf,
                 chat_mode=chat_mode,
-                user_language=db.get_user_attribute(user_id, "current_language") or "en",
+                user_language=db.get_user_attribute(user_id, C.DB_CURRENT_LANGUAGE) or C.DEFAULT_LANGUAGE,
                 user_profile=user_profile,
             )
         else:
@@ -273,7 +276,7 @@ async def _vision_message_handle_fn(
                 dialog_messages=dialog_messages,
                 image_buffer=buf,
                 chat_mode=chat_mode,
-                user_language=db.get_user_attribute(user_id, "current_language") or "en",
+                user_language=db.get_user_attribute(user_id, C.DB_CURRENT_LANGUAGE) or C.DEFAULT_LANGUAGE,
                 user_profile=user_profile,
             )
 
@@ -352,13 +355,14 @@ async def _vision_message_handle_fn(
         raise
 
     except Exception as e:
-        error_text = f"Something went wrong during completion. Reason: {e}"
+        error_text = get_localized_text("error_message", user_id).format(reason=str(e))
         logger.error(error_text)
         await update.message.reply_text(error_text)
         return
 
 async def unsupport_message_handle(update: Update, context: CallbackContext, message=None):
-    error_text = get_localized_text("unsupported_message_type", update.message.from_user.id)
+    user_id = update.message.from_user.id
+    error_text = get_localized_text("unsupported_message_type", user_id)
     logger.error(error_text)
     await update.message.reply_text(error_text)
     return
@@ -411,27 +415,27 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             return
     
-    chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
+    chat_mode = db.get_user_attribute(user_id, C.DB_CURRENT_CHAT_MODE)
     if chat_mode not in config.chat_modes.keys():
-        chat_mode = "ai_trainer"
-        db.set_user_attribute(user_id, "current_chat_mode", chat_mode)
+        chat_mode = C.DEFAULT_CHAT_MODE
+        db.set_user_attribute(user_id, C.DB_CURRENT_CHAT_MODE, chat_mode)
 
     if chat_mode == "artist":
         await generate_image_handle(update, context, message=message)
         return
 
-    current_model = db.get_user_attribute(user_id, "current_model")
+    current_model = db.get_user_attribute(user_id, C.DB_CURRENT_MODEL)
     if current_model not in config.models["available_text_models"]:
-        current_model = "gpt-5-mini-2025-08-07"
-        db.set_user_attribute(user_id, "current_model", current_model)
+        current_model = C.DEFAULT_MODEL
+        db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, current_model)
 
     async def message_handle_fn():
         # new dialog timeout
         if use_new_dialog_timeout:
-            if (datetime.now() - db.get_user_attribute(user_id, "last_interaction")).seconds > config.new_dialog_timeout and len(db.get_dialog_messages(user_id)) > 0:
+            if (datetime.now() - db.get_user_attribute(user_id, C.DB_LAST_INTERACTION)).seconds > config.new_dialog_timeout and len(db.get_dialog_messages(user_id)) > 0:
                 db.start_new_dialog(user_id)
                 await update.message.reply_text(get_localized_text("starting_new_dialog_timeout", user_id).format(mode=config.chat_modes[chat_mode]['name']), parse_mode=ParseMode.HTML)
-        db.set_user_attribute(user_id, "last_interaction", datetime.now())
+        db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
         # in case of CancelledError
         n_input_tokens, n_output_tokens = 0, 0
@@ -456,13 +460,13 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             chatgpt_instance = openai_utils.ChatGPT(model=current_model)
             user_profile = db.get_user_attribute(user_id, "user_profile") or {}
             if config.enable_message_streaming:
-                gen = chatgpt_instance.send_message_stream(_message, dialog_messages=dialog_messages, chat_mode=chat_mode, user_language=db.get_user_attribute(user_id, "current_language") or "en", user_profile=user_profile)
+                gen = chatgpt_instance.send_message_stream(_message, dialog_messages=dialog_messages, chat_mode=chat_mode, user_language=db.get_user_attribute(user_id, C.DB_CURRENT_LANGUAGE) or C.DEFAULT_LANGUAGE, user_profile=user_profile)
             else:
                 answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed = await chatgpt_instance.send_message(
                     _message,
                     dialog_messages=dialog_messages,
                     chat_mode=chat_mode,
-                    user_language=db.get_user_attribute(user_id, "current_language") or "en",
+                    user_language=db.get_user_attribute(user_id, C.DB_CURRENT_LANGUAGE) or C.DEFAULT_LANGUAGE,
                     user_profile=user_profile,
                 )
 
@@ -511,7 +515,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             raise
 
         except Exception as e:
-            error_text = f"Something went wrong during completion. Reason: {e}"
+            error_text = get_localized_text("error_message", user_id).format(reason=str(e))
             logger.error(error_text)
             await update.message.reply_text(error_text)
             return
@@ -532,7 +536,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
 
             if current_model not in ["gpt-4o", "gpt-4-vision-preview", "gpt-5-mini-2025-08-07"]:
                 current_model = "gpt-5-mini-2025-08-07"
-                db.set_user_attribute(user_id, "current_model", "gpt-5-mini-2025-08-07")
+                db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, "gpt-5-mini-2025-08-07")
             task = asyncio.create_task(
                 _vision_message_handle_fn(update, context, use_new_dialog_timeout=use_new_dialog_timeout)
             )
@@ -575,7 +579,7 @@ async def voice_message_handle(update: Update, context: CallbackContext):
     if await is_previous_message_not_answered_yet(update, context): return
 
     user_id = update.message.from_user.id
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     voice = update.message.voice
     voice_file = await context.bot.get_file(voice.file_id)
@@ -586,12 +590,22 @@ async def voice_message_handle(update: Update, context: CallbackContext):
     buf.name = "voice.oga"  # file extension is required
     buf.seek(0)  # move cursor to the beginning of the buffer
 
-    transcribed_text = await openai_utils.transcribe_audio(buf)
+    try:
+        transcribed_text = await openai_utils.transcribe_audio(buf)
+    except openai.error.PermissionError:
+        text = get_localized_text("voice_recognition_unavailable", user_id)
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        return
+    except Exception as e:
+        logger.error(f"Error transcribing audio: {e}")
+        text = get_localized_text("voice_processing_error", user_id)
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        return
     text = f"🎤: <i>{transcribed_text}</i>"
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
     # update n_transcribed_seconds
-    db.set_user_attribute(user_id, "n_transcribed_seconds", voice.duration + db.get_user_attribute(user_id, "n_transcribed_seconds"))
+    db.set_user_attribute(user_id, C.DB_N_TRANSCRIBED_SECONDS, voice.duration + db.get_user_attribute(user_id, C.DB_N_TRANSCRIBED_SECONDS))
 
     await message_handle(update, context, message=transcribed_text)
 
@@ -601,7 +615,7 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
     if await is_previous_message_not_answered_yet(update, context): return
 
     user_id = update.message.from_user.id
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     await update.message.chat.send_action(action="upload_photo")
 
@@ -618,7 +632,7 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
             raise
 
     # token usage
-    db.set_user_attribute(user_id, "n_generated_images", config.return_n_generated_images + db.get_user_attribute(user_id, "n_generated_images"))
+    db.set_user_attribute(user_id, C.DB_N_GENERATED_IMAGES, config.return_n_generated_images + db.get_user_attribute(user_id, C.DB_N_GENERATED_IMAGES))
 
     for i, image_url in enumerate(image_urls):
         await update.message.chat.send_action(action="upload_photo")
@@ -630,16 +644,16 @@ async def new_dialog_handle(update: Update, context: CallbackContext):
     if await is_previous_message_not_answered_yet(update, context): return
 
     user_id = update.message.from_user.id
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
-    db.set_user_attribute(user_id, "current_model", "gpt-5-mini-2025-08-07")
+    db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
+    db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, "gpt-5-mini-2025-08-07")
 
     db.start_new_dialog(user_id)
     await update.message.reply_text(get_localized_text("starting_new_dialog", user_id))
 
-    chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
+    chat_mode = db.get_user_attribute(user_id, C.DB_CURRENT_CHAT_MODE)
     if chat_mode not in config.chat_modes.keys():
         chat_mode = "ai_trainer"
-        db.set_user_attribute(user_id, "current_chat_mode", chat_mode)
+        db.set_user_attribute(user_id, C.DB_CURRENT_CHAT_MODE, chat_mode)
     
     language = db.get_user_attribute(user_id, "current_language") or "en"
     welcome_message = config.chat_modes[chat_mode]['welcome_message'][language]
@@ -650,7 +664,7 @@ async def cancel_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
 
     user_id = update.message.from_user.id
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     if user_id in user_tasks:
         task = user_tasks[user_id]
@@ -701,7 +715,7 @@ async def show_chat_modes_handle(update: Update, context: CallbackContext):
     if await is_previous_message_not_answered_yet(update, context): return
 
     user_id = update.message.from_user.id
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     text, reply_markup = get_chat_mode_menu(0, user_id)
     await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
@@ -712,7 +726,7 @@ async def show_chat_modes_callback_handle(update: Update, context: CallbackConte
      if await is_previous_message_not_answered_yet(update.callback_query, context): return
 
      user_id = update.callback_query.from_user.id
-     db.set_user_attribute(user_id, "last_interaction", datetime.now())
+     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
      query = update.callback_query
      await query.answer()
@@ -738,7 +752,7 @@ async def set_chat_mode_handle(update: Update, context: CallbackContext):
 
     chat_mode = query.data.split("|")[1]
 
-    db.set_user_attribute(user_id, "current_chat_mode", chat_mode)
+    db.set_user_attribute(user_id, C.DB_CURRENT_CHAT_MODE, chat_mode)
     db.start_new_dialog(user_id)
 
     await context.bot.send_message(
@@ -749,7 +763,7 @@ async def set_chat_mode_handle(update: Update, context: CallbackContext):
 
 
 def get_settings_menu(user_id: int):
-    current_model = db.get_user_attribute(user_id, "current_model")
+    current_model = db.get_user_attribute(user_id, C.DB_CURRENT_MODEL)
     text = config.models["info"][current_model]["description"]
 
     text += "\n\n"
@@ -779,7 +793,7 @@ async def settings_handle(update: Update, context: CallbackContext):
     if await is_previous_message_not_answered_yet(update, context): return
 
     user_id = update.message.from_user.id
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     text, reply_markup = get_settings_menu(user_id)
     await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
@@ -793,7 +807,7 @@ async def set_settings_handle(update: Update, context: CallbackContext):
     await query.answer()
 
     _, model_key = query.data.split("|")
-    db.set_user_attribute(user_id, "current_model", model_key)
+    db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, model_key)
     db.start_new_dialog(user_id)
 
     text, reply_markup = get_settings_menu(user_id)
@@ -808,15 +822,15 @@ async def show_balance_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
 
     user_id = update.message.from_user.id
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     # count total usage statistics
     total_n_spent_dollars = 0
     total_n_used_tokens = 0
 
-    n_used_tokens_dict = db.get_user_attribute(user_id, "n_used_tokens")
-    n_generated_images = db.get_user_attribute(user_id, "n_generated_images")
-    n_transcribed_seconds = db.get_user_attribute(user_id, "n_transcribed_seconds")
+    n_used_tokens_dict = db.get_user_attribute(user_id, C.DB_N_USED_TOKENS)
+    n_generated_images = db.get_user_attribute(user_id, C.DB_N_GENERATED_IMAGES)
+    n_transcribed_seconds = db.get_user_attribute(user_id, C.DB_N_TRANSCRIBED_SECONDS)
 
     details_text = get_localized_text("details", user_id)
     for model_key in sorted(n_used_tokens_dict.keys()):
@@ -860,7 +874,7 @@ async def edited_message_handle(update: Update, context: CallbackContext):
 async def show_language_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     user_id = update.message.from_user.id
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     text = get_localized_text("select_language", user_id)
     
@@ -896,6 +910,89 @@ async def set_language_handle(update: Update, context: CallbackContext):
         parse_mode=ParseMode.HTML
     )
     
+
+def is_premium_user(user_id: int) -> bool:
+    status = db.get_user_attribute(user_id, C.DB_SUBSCRIPTION_STATUS)
+    expiry = db.get_user_attribute(user_id, C.DB_SUBSCRIPTION_EXPIRY)
+    
+    if status == C.SUBSCRIPTION_STATUS_PREMIUM and expiry and expiry > datetime.now():
+        return True
+    return False
+
+
+async def show_subscription_handle(update: Update, context: CallbackContext):
+    await register_user_if_not_exists(update, context, update.message.from_user)
+    user_id = update.message.from_user.id
+    
+    is_premium = is_premium_user(user_id)
+    expiry = db.get_user_attribute(user_id, C.DB_SUBSCRIPTION_EXPIRY)
+    
+    if is_premium and expiry:
+        text = get_localized_text("subscription_status_premium", user_id).format(
+            expiry_date=expiry.strftime("%Y-%m-%d")
+        )
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    else:
+        title = get_localized_text("subscription_title", user_id)
+        description = get_localized_text("subscription_description", user_id)
+        
+        await context.bot.send_invoice(
+            chat_id=update.message.chat_id,
+            title=title,
+            description=description,
+            payload=C.SUBSCRIPTION_PAYLOAD_MONTHLY,
+            provider_token="",  # Empty for Telegram Stars
+            currency="XTR",
+            prices=[LabeledPrice("Premium 1 Month", C.SUBSCRIPTION_PRICE_STARS)],
+            start_parameter="premium-subscription"
+        )
+
+
+async def precheckout_callback(update: Update, context: CallbackContext):
+    query = update.pre_checkout_query
+    # Check the payload, is this from your bot?
+    if query.invoice_payload != C.SUBSCRIPTION_PAYLOAD_MONTHLY:
+        # Answer False if something went wrong
+        user_id = update.effective_user.id
+        error_text = get_localized_text("payment_error", user_id)
+        await query.answer(ok=False, error_message=error_text)
+    else:
+        await query.answer(ok=True)
+
+
+async def successful_payment_callback(update: Update, context: CallbackContext):
+    await register_user_if_not_exists(update, context, update.message.from_user)
+    user_id = update.message.from_user.id
+    
+    # Calculate new expiry date
+    current_expiry = db.get_user_attribute(user_id, C.DB_SUBSCRIPTION_EXPIRY)
+    if current_expiry and current_expiry > datetime.now():
+        new_expiry = current_expiry + timedelta(days=C.SUBSCRIPTION_DURATION_DAYS)
+    else:
+        new_expiry = datetime.now() + timedelta(days=C.SUBSCRIPTION_DURATION_DAYS)
+        
+    # Update user subscription
+    db.set_user_attribute(user_id, C.DB_SUBSCRIPTION_STATUS, C.SUBSCRIPTION_STATUS_PREMIUM)
+    db.set_user_attribute(user_id, C.DB_SUBSCRIPTION_EXPIRY, new_expiry)
+    
+    # Add to history
+    payment_info = {
+        "date": datetime.now(),
+        "amount": update.message.successful_payment.total_amount,
+        "currency": update.message.successful_payment.currency,
+        "telegram_payment_charge_id": update.message.successful_payment.telegram_payment_charge_id,
+        "provider_payment_charge_id": update.message.successful_payment.provider_payment_charge_id
+    }
+    
+    history = db.get_user_attribute(user_id, C.DB_SUBSCRIPTION_HISTORY) or []
+    history.append(payment_info)
+    db.set_user_attribute(user_id, C.DB_SUBSCRIPTION_HISTORY, history)
+    
+    text = get_localized_text("subscription_success", user_id).format(
+        expiry_date=new_expiry.strftime("%Y-%m-%d")
+    )
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    
     # Refresh menu if needed or just confirm
     # For now just confirmation message is enough
 
@@ -904,7 +1001,7 @@ async def set_language_handle(update: Update, context: CallbackContext):
 async def show_profile_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     user_id = update.message.from_user.id
-    db.set_user_attribute(user_id, "last_interaction", datetime.now())
+    db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     profile = db.get_user_attribute(user_id, "user_profile") or {}
     
@@ -1075,6 +1172,11 @@ def run_bot() -> None:
     application.add_handler(CommandHandler("profile", show_profile_handle, filters=user_filter))
     application.add_handler(CallbackQueryHandler(profile_edit_callback_handle, pattern="^profile_edit"))
     application.add_handler(CallbackQueryHandler(profile_set_callback_handle, pattern="^profile_set"))
+
+    application.add_handler(CommandHandler("subscribe", show_subscription_handle, filters=user_filter))
+    application.add_handler(CommandHandler("subscription", show_subscription_handle, filters=user_filter))
+    application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
 
     application.add_error_handler(error_handle)
 

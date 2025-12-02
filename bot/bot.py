@@ -226,8 +226,8 @@ async def _vision_message_handle_fn(
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
 
     buf = None
-    if update.message.effective_attachment:
-        photo = update.message.effective_attachment[-1]
+    if update.message.photo:
+        photo = update.message.photo[-1]
         photo_file = await context.bot.get_file(photo.file_id)
 
         # store file in memory, not on disk

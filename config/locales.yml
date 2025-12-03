@@ -2,14 +2,14 @@ en:
   welcome: "Hi! I’m your cycling coach.\nI’ll help you grow your FTP, break down any workout, and explain everything by the numbers — power, HR, cadence, TSS, NP, IF, and zones\n\n"
   help: |
     Commands:
-    ⚪ /retry – Regenerate last bot answer
-    ⚪ /new – Start new dialog
-    ⚪ /settings – Show settings
-    ⚪ /balance – Show balance
-    ⚪ /language – Select language
-    ⚪ /profile – Manage your profile
-    ⚪ /subscribe – Premium subscription
-    ⚪ /help – Show help
+    🔄 /retry – Regenerate last bot answer
+    🆕 /new – Start new dialog
+    ⚙️ /settings – Show settings
+    💰 /balance – Show balance
+    🌐 /language – Select language
+    👤 /profile – Manage your profile
+    ⭐ /subscribe – Premium subscription
+    ❓ /help – Show help
 
     👥 Add bot to <b>group chat</b>: /help_group_chat
     🎤 You can send <b>Voice Messages</b> instead of text
@@ -98,14 +98,14 @@ ru:
   welcome: "Привет! Я твой вело-помощник.\nПомогу вырастить FTP, быстро разобрать тренировку и объяснить всё по цифрам — мощность, HR, каденс, TSS, NP, IF и зоны\n\n"
   help: |
     Команды:
-    ⚪ /retry – Перегенерировать последний ответ
-    ⚪ /new – Начать новый диалог
-    ⚪ /settings – Показать настройки
-    ⚪ /balance – Показать баланс
-    ⚪ /language – Выбрать язык
-    ⚪ /profile – Управление профилем
-    ⚪ /subscribe – Премиум подписка
-    ⚪ /help – Показать помощь
+    🔄 /retry – Перегенерировать последний ответ
+    🆕 /new – Начать новый диалог
+    ⚙️ /settings – Показать настройки
+    💰 /balance – Показать баланс
+    🌐 /language – Выбрать язык
+    👤 /profile – Управление профилем
+    ⭐ /subscribe – Премиум подписка
+    ❓ /help – Показать помощь
 
     👥 Добавьте бота в <b>групповой чат</b>: /help_group_chat
     🎤 Вы можете отправлять <b>Голосовые сообщения</b> вместо текста

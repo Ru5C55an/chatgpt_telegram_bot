@@ -914,6 +914,11 @@ async def set_language_handle(update: Update, context: CallbackContext):
     
 
 def is_premium_user(user_id: int) -> bool:
+    # Check if user is admin (admins have unlimited access)
+    if user_id in config.admin_user_ids:
+        return True
+    
+    # Check regular subscription status
     status = db.get_user_attribute(user_id, C.DB_SUBSCRIPTION_STATUS)
     expiry = db.get_user_attribute(user_id, C.DB_SUBSCRIPTION_EXPIRY)
     

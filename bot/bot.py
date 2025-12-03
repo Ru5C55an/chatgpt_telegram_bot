@@ -1182,14 +1182,29 @@ async def error_handle(update: Update, context: CallbackContext) -> None:
         await context.bot.send_message(update.effective_chat.id, "Some error in error handler")
 
 async def post_init(application: Application):
+    # Set commands for English (default)
     await application.bot.set_my_commands([
         BotCommand("/new", "Start new dialog"),
-        BotCommand("/mode", "Select chat mode"),
-        BotCommand("/retry", "Re-generate response for previous query"),
-        BotCommand("/balance", "Show balance"),
+        BotCommand("/retry", "Re-generate response"),
         BotCommand("/settings", "Show settings"),
+        BotCommand("/balance", "Show balance"),
+        BotCommand("/language", "Select language"),
+        BotCommand("/profile", "Manage your profile"),
+        BotCommand("/subscribe", "Premium subscription"),
         BotCommand("/help", "Show help message"),
     ])
+    
+    # Set commands for Russian
+    await application.bot.set_my_commands([
+        BotCommand("/new", "Начать новый диалог"),
+        BotCommand("/retry", "Перегенерировать ответ"),
+        BotCommand("/settings", "Показать настройки"),
+        BotCommand("/balance", "Показать баланс"),
+        BotCommand("/language", "Выбрать язык"),
+        BotCommand("/profile", "Управление профилем"),
+        BotCommand("/subscribe", "Премиум подписка"),
+        BotCommand("/help", "Показать помощь"),
+    ], language_code="ru")
 
 def run_bot() -> None:
     application = (

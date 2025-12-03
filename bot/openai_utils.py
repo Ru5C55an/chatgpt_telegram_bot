@@ -2,6 +2,7 @@ import base64
 from io import BytesIO
 import config
 import logging
+import constants as C
 
 import tiktoken
 import openai
@@ -25,8 +26,8 @@ OPENAI_COMPLETION_OPTIONS = {
 
 
 class ChatGPT:
-    def __init__(self, model="gpt-5-mini-2025-08-07"):
-        assert model in {"gpt-5-mini-2025-08-07"}, f"Unknown model: {model}"
+    def __init__(self, model=C.OPENAI_MODEL_GPT_5_MINI):
+        assert model in {C.OPENAI_MODEL_GPT_5_MINI}, f"Unknown model: {model}"
         self.model = model
 
     async def send_message(self, message, dialog_messages=[], chat_mode="ai_trainer", user_language="en", user_profile=None):
@@ -37,7 +38,7 @@ class ChatGPT:
         answer = None
         while answer is None:
             try:
-                if self.model in {"gpt-5-mini-2025-08-07"}:
+                if self.model in {C.OPENAI_MODEL_GPT_5_MINI}:
                     messages = self._generate_prompt_messages(message, dialog_messages, chat_mode, user_language=user_language, user_profile=user_profile)
 
                     r = await openai.ChatCompletion.acreate(
@@ -46,7 +47,7 @@ class ChatGPT:
                         **OPENAI_COMPLETION_OPTIONS
                     )
                     answer = r.choices[0].message["content"]
-                elif self.model == "text-davinci-003":
+                elif self.model == C.OPENAI_MODEL_DAVINCI:
                     prompt = self._generate_prompt(message, dialog_messages, chat_mode)
                     r = await openai.Completion.acreate(
                         engine=self.model,
@@ -78,7 +79,7 @@ class ChatGPT:
         answer = None
         while answer is None:
             try:
-                if self.model in {"gpt-5-mini-2025-08-07"}:
+                if self.model in {C.OPENAI_MODEL_GPT_5_MINI}:
                     messages = self._generate_prompt_messages(message, dialog_messages, chat_mode, user_language=user_language, user_profile=user_profile)
 
                     r_gen = await openai.ChatCompletion.acreate(
@@ -100,7 +101,7 @@ class ChatGPT:
                             yield "not_finished", answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed
                             
 
-                elif self.model == "text-davinci-003":
+                elif self.model == C.OPENAI_MODEL_DAVINCI:
                     prompt = self._generate_prompt(message, dialog_messages, chat_mode)
                     r_gen = await openai.Completion.acreate(
                         engine=self.model,
@@ -140,7 +141,7 @@ class ChatGPT:
         answer = None
         while answer is None:
             try:
-                if self.model in ["gpt-4-vision-preview", "gpt-4o", "gpt-5-mini-2025-08-07"]:
+                if self.model in [C.OPENAI_MODEL_GPT_4_VISION, C.OPENAI_MODEL_GPT_4O, C.OPENAI_MODEL_GPT_5_MINI]:
                     messages = self._generate_prompt_messages(
                         message, dialog_messages, chat_mode, image_buffer, user_language, user_profile
                     )
@@ -190,7 +191,7 @@ class ChatGPT:
         answer = None
         while answer is None:
             try:
-                if self.model in ["gpt-4-vision-preview", "gpt-4o", "gpt-5-mini-2025-08-07"]:
+                if self.model in [C.OPENAI_MODEL_GPT_4_VISION, C.OPENAI_MODEL_GPT_4O, C.OPENAI_MODEL_GPT_5_MINI]:
                     messages = self._generate_prompt_messages(
                         message, dialog_messages, chat_mode, image_buffer, user_language, user_profile
                     )
@@ -265,26 +266,26 @@ class ChatGPT:
         # Append user profile information to system prompt if available
         if user_profile and any(user_profile.values()):
             prompt += "\n\nUser Profile:"
-            if user_profile.get("height"):
-                prompt += f"\n- Height: {user_profile['height']} cm"
-            if user_profile.get("weight"):
-                prompt += f"\n- Weight: {user_profile['weight']} kg"
-            if user_profile.get("fitness_level"):
-                prompt += f"\n- Fitness Level: {user_profile['fitness_level']}"
-            if user_profile.get("goals"):
-                prompt += f"\n- Goals: {user_profile['goals']}"
-            if user_profile.get("gender"):
-                prompt += f"\n- Gender: {user_profile['gender']}"
+            if user_profile.get(C.PROFILE_HEIGHT):
+                prompt += f"\n- Height: {user_profile[C.PROFILE_HEIGHT]} cm"
+            if user_profile.get(C.PROFILE_WEIGHT):
+                prompt += f"\n- Weight: {user_profile[C.PROFILE_WEIGHT]} kg"
+            if user_profile.get(C.PROFILE_FITNESS_LEVEL):
+                prompt += f"\n- Fitness Level: {user_profile[C.PROFILE_FITNESS_LEVEL]}"
+            if user_profile.get(C.PROFILE_GOALS):
+                prompt += f"\n- Goals: {user_profile[C.PROFILE_GOALS]}"
+            if user_profile.get(C.PROFILE_GENDER):
+                prompt += f"\n- Gender: {user_profile[C.PROFILE_GENDER]}"
             prompt += "\n\nUse this information to personalize your training recommendations and advice."
         
         # Add instruction about response length and structure
         prompt += "\n\nIMPORTANT: Keep your responses concise, well-structured and complete. Be brief and to the point. If your response is getting long, organize it with clear sections and ensure each thought is finished. Always end your response at a natural stopping point, not mid-sentence or mid-thought."
 
-        messages = [{"role": "system", "content": prompt}]
+        messages = [{"role": C.OPENAI_ROLE_SYSTEM, "content": prompt}]
         
         for dialog_message in dialog_messages:
-            messages.append({"role": "user", "content": dialog_message["user"]})
-            messages.append({"role": "assistant", "content": dialog_message["bot"]})
+            messages.append({"role": C.OPENAI_ROLE_USER, "content": dialog_message["user"]})
+            messages.append({"role": C.OPENAI_ROLE_ASSISTANT, "content": dialog_message["bot"]})
                     
         if image_buffer is not None:
             messages.append(
@@ -316,10 +317,10 @@ class ChatGPT:
         answer = answer.strip()
         return answer
 
-    def _count_tokens_from_messages(self, messages, answer, model="gpt-5-mini-2025-08-07"):
+    def _count_tokens_from_messages(self, messages, answer, model=C.OPENAI_MODEL_GPT_5_MINI):
         encoding = tiktoken.encoding_for_model("gpt-4") # use gpt-4 encoding for now
 
-        if model == "gpt-5-mini-2025-08-07":
+        if model == C.OPENAI_MODEL_GPT_5_MINI:
             tokens_per_message = 3
             tokens_per_name = 1
         else:
@@ -351,7 +352,7 @@ class ChatGPT:
 
         return n_input_tokens, n_output_tokens
 
-    def _count_tokens_from_prompt(self, prompt, answer, model="text-davinci-003"):
+    def _count_tokens_from_prompt(self, prompt, answer, model=C.OPENAI_MODEL_DAVINCI):
         encoding = tiktoken.encoding_for_model(model)
 
         n_input_tokens = len(encoding.encode(prompt)) + 1
@@ -360,8 +361,9 @@ class ChatGPT:
         return n_input_tokens, n_output_tokens
 
 
+
 async def transcribe_audio(audio_file) -> str:
-    r = await openai.Audio.atranscribe("whisper-1", audio_file)
+    r = await openai.Audio.atranscribe(C.OPENAI_MODEL_WHISPER, audio_file)
     return r["text"] or ""
 
 

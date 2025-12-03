@@ -115,8 +115,8 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
     if isinstance(n_used_tokens, int) or isinstance(n_used_tokens, float):  # old format
         new_n_used_tokens = {
             "gpt-3.5-turbo": {
-                "n_input_tokens": 0,
-                "n_output_tokens": n_used_tokens
+                C.DB_N_INPUT_TOKENS: 0,
+                C.DB_N_OUTPUT_TOKENS: n_used_tokens
             }
         }
         db.set_user_attribute(user.id, C.DB_N_USED_TOKENS, new_n_used_tokens)
@@ -402,6 +402,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
                 text = get_localized_text("profile_updated", user_id)
                 del context.user_data[C.CONTEXT_PROFILE_FIELD_EDITING]
                 await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+                await prompt_next_empty_profile_field(user_id, context, update)
                 return
             except ValueError:
                 text = get_localized_text("profile_invalid_number", user_id)
@@ -413,6 +414,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             text = get_localized_text("profile_updated", user_id)
             del context.user_data[C.CONTEXT_PROFILE_FIELD_EDITING]
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+            await prompt_next_empty_profile_field(user_id, context, update)
             return
     
     chat_mode = db.get_user_attribute(user_id, C.DB_CURRENT_CHAT_MODE)
@@ -834,7 +836,7 @@ async def show_balance_handle(update: Update, context: CallbackContext):
 
     details_text = get_localized_text("details", user_id)
     for model_key in sorted(n_used_tokens_dict.keys()):
-        n_input_tokens, n_output_tokens = n_used_tokens_dict[model_key]["n_input_tokens"], n_used_tokens_dict[model_key]["n_output_tokens"]
+        n_input_tokens, n_output_tokens = n_used_tokens_dict[model_key][C.DB_N_INPUT_TOKENS], n_used_tokens_dict[model_key][C.DB_N_OUTPUT_TOKENS]
         total_n_used_tokens += n_input_tokens + n_output_tokens
 
         n_input_spent_dollars = config.models["info"][model_key]["price_per_1000_input_tokens"] * (n_input_tokens / 1000)
@@ -998,6 +1000,66 @@ async def successful_payment_callback(update: Update, context: CallbackContext):
 
 
 # Profile Management Handlers
+
+PROFILE_FIELDS_ORDER = [
+    C.PROFILE_HEIGHT,
+    C.PROFILE_WEIGHT,
+    C.PROFILE_FITNESS_LEVEL,
+    C.PROFILE_GOALS,
+    C.PROFILE_GENDER
+]
+
+async def prompt_next_empty_profile_field(user_id: int, context: CallbackContext, update: Update):
+    profile = db.get_user_attribute(user_id, C.DB_USER_PROFILE) or {}
+    
+    for field in PROFILE_FIELDS_ORDER:
+        if not profile.get(field):
+            # Found empty field, prompt for it
+            context.user_data[C.CONTEXT_PROFILE_FIELD_EDITING] = field
+            
+            if field == C.PROFILE_FITNESS_LEVEL:
+                text = get_localized_text("profile_select_fitness_level", user_id)
+                keyboard = [
+                    [InlineKeyboardButton(get_localized_text("fitness_level_beginner", user_id), callback_data="profile_set|fitness_level|beginner")],
+                    [InlineKeyboardButton(get_localized_text("fitness_level_intermediate", user_id), callback_data="profile_set|fitness_level|intermediate")],
+                    [InlineKeyboardButton(get_localized_text("fitness_level_advanced", user_id), callback_data="profile_set|fitness_level|advanced")],
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                if update.callback_query:
+                    await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+                else:
+                    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+                    
+            elif field == C.PROFILE_GENDER:
+                text = get_localized_text("profile_select_gender", user_id)
+                keyboard = [
+                    [InlineKeyboardButton(get_localized_text("gender_male", user_id), callback_data="profile_set|gender|male")],
+                    [InlineKeyboardButton(get_localized_text("gender_female", user_id), callback_data="profile_set|gender|female")],
+                    [InlineKeyboardButton(get_localized_text("gender_other", user_id), callback_data="profile_set|gender|other")],
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                if update.callback_query:
+                    await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+                else:
+                    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+            else:
+                if field == C.PROFILE_HEIGHT:
+                    text = get_localized_text("profile_enter_height", user_id)
+                elif field == C.PROFILE_WEIGHT:
+                    text = get_localized_text("profile_enter_weight", user_id)
+                elif field == C.PROFILE_GOALS:
+                    text = get_localized_text("profile_enter_goals", user_id)
+                
+                if update.callback_query:
+                    await update.callback_query.message.reply_text(text, parse_mode=ParseMode.HTML)
+                else:
+                    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+            return
+
+    # All fields filled, show profile summary
+    await show_profile_handle(update, context)
+
+
 async def show_profile_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     user_id = update.message.from_user.id
@@ -1086,6 +1148,7 @@ async def profile_set_callback_handle(update: Update, context: CallbackContext):
     
     text = get_localized_text("profile_updated", user_id)
     await query.edit_message_text(text, parse_mode=ParseMode.HTML)
+    await prompt_next_empty_profile_field(user_id, context, update)
 
 
 async def error_handle(update: Update, context: CallbackContext) -> None:

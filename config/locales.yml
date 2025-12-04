@@ -81,12 +81,12 @@ en:
   subscription_description: |
     Support the bot and get premium status!
     
-    <b>Premium Benefits:</b>
+    **Premium Benefits:**
     ✨ Unlimited access to AI Trainer
     ✨ Priority support
     ✨ Support future development
     
-    <b>Price:</b> 100 Stars / month
+    **Price:** 100 Stars / month
   subscription_button: "Subscribe for 100 Stars"
   subscription_success: "🎉 Thank you! Your subscription is active until <b>{expiry_date}</b>."
   subscription_status_premium: "🌟 Premium active until <b>{expiry_date}</b>"
@@ -177,12 +177,12 @@ ru:
   subscription_description: |
     Поддержите бота и получите премиум статус!
     
-    <b>Преимущества Премиум:</b>
+    **Преимущества Премиум:**
     ✨ Безлимитный доступ к AI Тренеру
     ✨ Приоритетная поддержка
     ✨ Поддержка развития проекта
     
-    <b>Цена:</b> 100 Stars / месяц
+    **Цена:** 100 Stars / месяц
   subscription_button: "Подписаться за 100 Stars"
   subscription_success: "🎉 Спасибо! Ваша подписка активна до <b>{expiry_date}</b>."
   subscription_status_premium: "🌟 Премиум активен до <b>{expiry_date}</b>"

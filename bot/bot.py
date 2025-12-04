@@ -200,7 +200,7 @@ async def retry_handle(update: Update, context: CallbackContext):
     await message_handle(update, context, message=last_dialog_message["user"], use_new_dialog_timeout=False)
 
 async def _vision_message_handle_fn(
-    update: Update, context: CallbackContext, use_new_dialog_timeout: bool = True
+    update: Update, context: CallbackContext, message=None, use_new_dialog_timeout: bool = True
 ):
     logger.info('_vision_message_handle_fn')
     user_id = update.message.from_user.id
@@ -245,7 +245,8 @@ async def _vision_message_handle_fn(
     try:
         # send placeholder message to user
         placeholder_message = await update.message.reply_text("...")
-        message = update.message.caption or update.message.text or ''
+        # Use the message parameter if provided (e.g., from voice transcription), otherwise get from update
+        _message = message if message is not None else (update.message.caption or update.message.text or '')
 
         # send typing action
         await update.message.chat.send_action(action="typing")
@@ -540,7 +541,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
                 current_model = "gpt-5-mini-2025-08-07"
                 db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, "gpt-5-mini-2025-08-07")
             task = asyncio.create_task(
-                _vision_message_handle_fn(update, context, use_new_dialog_timeout=use_new_dialog_timeout)
+                _vision_message_handle_fn(update, context, message=_message, use_new_dialog_timeout=use_new_dialog_timeout)
             )
         else:
             task = asyncio.create_task(

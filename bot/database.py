@@ -64,7 +64,8 @@ class Database:
             # Subscription fields
             C.DB_SUBSCRIPTION_STATUS: C.SUBSCRIPTION_STATUS_FREE,
             C.DB_SUBSCRIPTION_EXPIRY: None,
-            C.DB_SUBSCRIPTION_HISTORY: []
+            C.DB_SUBSCRIPTION_HISTORY: [],
+            C.DB_MONTHLY_TOKEN_RESET_DATE: None
         }
 
         if not self.check_if_user_exists(user_id):

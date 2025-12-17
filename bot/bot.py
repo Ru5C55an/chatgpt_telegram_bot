@@ -417,6 +417,10 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             await prompt_next_empty_profile_field(user_id, context, update)
             return
+
+    # Check quota for free users
+    if not await check_user_quota(user_id, update, context):
+        return
     
     chat_mode = db.get_user_attribute(user_id, C.DB_CURRENT_CHAT_MODE)
     if chat_mode not in config.chat_modes.keys():
@@ -582,6 +586,11 @@ async def voice_message_handle(update: Update, context: CallbackContext):
     if await is_previous_message_not_answered_yet(update, context): return
 
     user_id = update.message.from_user.id
+    
+    # Check quota for free users
+    if not await check_user_quota(user_id, update, context):
+        return
+
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     voice = update.message.voice
@@ -826,44 +835,78 @@ async def show_balance_handle(update: Update, context: CallbackContext):
 
     user_id = update.message.from_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
+    
+    # Check if user is admin or tester (they get detailed view)
+    is_admin_or_tester = user_id in config.admin_user_ids or user_id in config.test_user_ids
+    
+    if is_admin_or_tester:
+        # Detailed view for admins and testers
+        # count total usage statistics
+        total_n_spent_dollars = 0
+        total_n_used_tokens = 0
 
-    # count total usage statistics
-    total_n_spent_dollars = 0
-    total_n_used_tokens = 0
+        n_used_tokens_dict = db.get_user_attribute(user_id, C.DB_N_USED_TOKENS)
+        n_generated_images = db.get_user_attribute(user_id, C.DB_N_GENERATED_IMAGES)
+        n_transcribed_seconds = db.get_user_attribute(user_id, C.DB_N_TRANSCRIBED_SECONDS)
 
-    n_used_tokens_dict = db.get_user_attribute(user_id, C.DB_N_USED_TOKENS)
-    n_generated_images = db.get_user_attribute(user_id, C.DB_N_GENERATED_IMAGES)
-    n_transcribed_seconds = db.get_user_attribute(user_id, C.DB_N_TRANSCRIBED_SECONDS)
+        details_text = get_localized_text("details", user_id)
+        for model_key in sorted(n_used_tokens_dict.keys()):
+            n_input_tokens, n_output_tokens = n_used_tokens_dict[model_key][C.DB_N_INPUT_TOKENS], n_used_tokens_dict[model_key][C.DB_N_OUTPUT_TOKENS]
+            total_n_used_tokens += n_input_tokens + n_output_tokens
 
-    details_text = get_localized_text("details", user_id)
-    for model_key in sorted(n_used_tokens_dict.keys()):
-        n_input_tokens, n_output_tokens = n_used_tokens_dict[model_key][C.DB_N_INPUT_TOKENS], n_used_tokens_dict[model_key][C.DB_N_OUTPUT_TOKENS]
-        total_n_used_tokens += n_input_tokens + n_output_tokens
+            n_input_spent_dollars = config.models["info"][model_key]["price_per_1000_input_tokens"] * (n_input_tokens / 1000)
+            n_output_spent_dollars = config.models["info"][model_key]["price_per_1000_output_tokens"] * (n_output_tokens / 1000)
+            total_n_spent_dollars += n_input_spent_dollars + n_output_spent_dollars
 
-        n_input_spent_dollars = config.models["info"][model_key]["price_per_1000_input_tokens"] * (n_input_tokens / 1000)
-        n_output_spent_dollars = config.models["info"][model_key]["price_per_1000_output_tokens"] * (n_output_tokens / 1000)
-        total_n_spent_dollars += n_input_spent_dollars + n_output_spent_dollars
+            details_text += f"- {model_key}: <b>{n_input_spent_dollars + n_output_spent_dollars:.03f}$</b> / <b>{n_input_tokens + n_output_tokens} tokens</b>\n"
 
-        details_text += f"- {model_key}: <b>{n_input_spent_dollars + n_output_spent_dollars:.03f}$</b> / <b>{n_input_tokens + n_output_tokens} tokens</b>\n"
+        # image generation
+        image_generation_n_spent_dollars = config.models["info"]["dalle-2"]["price_per_1_image"] * n_generated_images
+        if n_generated_images != 0:
+            details_text += f"- DALL·E 2 (image generation): <b>{image_generation_n_spent_dollars:.03f}$</b> / <b>{n_generated_images} generated images</b>\n"
 
-    # image generation
-    image_generation_n_spent_dollars = config.models["info"]["dalle-2"]["price_per_1_image"] * n_generated_images
-    if n_generated_images != 0:
-        details_text += f"- DALL·E 2 (image generation): <b>{image_generation_n_spent_dollars:.03f}$</b> / <b>{n_generated_images} generated images</b>\n"
+        total_n_spent_dollars += image_generation_n_spent_dollars
 
-    total_n_spent_dollars += image_generation_n_spent_dollars
+        # voice recognition
+        voice_recognition_n_spent_dollars = config.models["info"]["whisper"]["price_per_1_min"] * (n_transcribed_seconds / 60)
+        if n_transcribed_seconds != 0:
+            details_text += f"- Whisper (voice recognition): <b>{voice_recognition_n_spent_dollars:.03f}$</b> / <b>{n_transcribed_seconds:.01f} seconds</b>\n"
 
-    # voice recognition
-    voice_recognition_n_spent_dollars = config.models["info"]["whisper"]["price_per_1_min"] * (n_transcribed_seconds / 60)
-    if n_transcribed_seconds != 0:
-        details_text += f"- Whisper (voice recognition): <b>{voice_recognition_n_spent_dollars:.03f}$</b> / <b>{n_transcribed_seconds:.01f} seconds</b>\n"
+        total_n_spent_dollars += voice_recognition_n_spent_dollars
 
-    total_n_spent_dollars += voice_recognition_n_spent_dollars
-
-
-    text = get_localized_text("spent", user_id).format(amount=f"{total_n_spent_dollars:.03f}")
-    text += get_localized_text("used_tokens", user_id).format(amount=total_n_used_tokens)
-    text += details_text
+        text = get_localized_text("spent", user_id).format(amount=f"{total_n_spent_dollars:.03f}")
+        text += get_localized_text("used_tokens", user_id).format(amount=total_n_used_tokens)
+        text += details_text
+        
+        # Add user status badge
+        status_badge = get_user_status_badge(user_id)
+        if status_badge:
+            text += f"\n\n{status_badge}"
+    else:
+        # Simplified view for regular users
+        is_premium = is_premium_user(user_id)
+        n_used_tokens_dict = db.get_user_attribute(user_id, C.DB_N_USED_TOKENS) or {}
+        
+        # Calculate total used tokens
+        total_used_tokens = 0
+        for model_key, tokens_dict in n_used_tokens_dict.items():
+            total_used_tokens += tokens_dict.get(C.DB_N_INPUT_TOKENS, 0) + tokens_dict.get(C.DB_N_OUTPUT_TOKENS, 0)
+        
+        if is_premium:
+            # Premium user - show remaining tokens and reset date
+            is_test = is_test_user(user_id)
+            token_limit = C.TEST_PREMIUM_MONTHLY_TOKEN_LIMIT if is_test else C.PREMIUM_MONTHLY_TOKEN_LIMIT
+            remaining_tokens = max(0, token_limit - total_used_tokens)
+            reset_date = db.get_user_attribute(user_id, C.DB_MONTHLY_TOKEN_RESET_DATE)
+            
+            text = f"📊 <b>Tokens remaining:</b> {remaining_tokens:,} / {token_limit:,}\n"
+            if reset_date:
+                text += f"🔄 <b>Resets on:</b> {reset_date.strftime('%Y-%m-%d')}"
+        else:
+            # Free user - show remaining tokens
+            remaining_tokens = max(0, C.FREE_TOKEN_LIMIT - total_used_tokens)
+            text = f"📊 <b>Tokens remaining:</b> {remaining_tokens:,} / {C.FREE_TOKEN_LIMIT:,}\n"
+            text += f"\n💡 Upgrade to premium for more tokens!"
 
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
@@ -928,6 +971,74 @@ def is_premium_user(user_id: int) -> bool:
     return False
 
 
+def is_test_user(user_id: int) -> bool:
+    """Check if user is a test user with special subscription parameters."""
+    return user_id in config.test_user_ids
+
+
+def get_user_status_badge(user_id: int) -> str:
+    """Get user status badge (Admin/Tester) or empty string for regular users."""
+    if user_id in config.admin_user_ids:
+        return "👑 Administrator"
+    elif user_id in config.test_user_ids:
+        return "🧪 Tester"
+    return ""
+
+
+async def check_user_quota(user_id: int, update: Update, context: CallbackContext) -> bool:
+    is_premium = is_premium_user(user_id)
+    
+    # Get current token usage
+    n_used_tokens_dict = db.get_user_attribute(user_id, C.DB_N_USED_TOKENS) or {}
+    
+    if is_premium:
+        # Determine if user is a test user
+        is_test = is_test_user(user_id)
+        
+        # Set appropriate limits and duration
+        token_limit = C.TEST_PREMIUM_MONTHLY_TOKEN_LIMIT if is_test else C.PREMIUM_MONTHLY_TOKEN_LIMIT
+        reset_days = C.TEST_SUBSCRIPTION_DURATION_DAYS if is_test else 30
+        
+        # Check if monthly quota needs to be reset
+        reset_date = db.get_user_attribute(user_id, C.DB_MONTHLY_TOKEN_RESET_DATE)
+        
+        # If reset_date is None or has passed, reset the quota
+        if reset_date is None or datetime.now() >= reset_date:
+            # Calculate next reset date
+            next_reset = datetime.now() + timedelta(days=reset_days)
+            db.set_user_attribute(user_id, C.DB_MONTHLY_TOKEN_RESET_DATE, next_reset)
+            # Reset token usage
+            db.set_user_attribute(user_id, C.DB_N_USED_TOKENS, {})
+            return True
+        
+        # Calculate tokens used in current period
+        total_tokens = 0
+        for model_key, tokens_dict in n_used_tokens_dict.items():
+            total_tokens += tokens_dict.get(C.DB_N_INPUT_TOKENS, 0) + tokens_dict.get(C.DB_N_OUTPUT_TOKENS, 0)
+        
+        # Check if premium user exceeded monthly limit
+        if total_tokens >= token_limit:
+            text = get_localized_text("premium_limit_reached", user_id).format(
+                reset_date=reset_date.strftime("%Y-%m-%d")
+            )
+            await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+            return False
+        
+        return True
+    else:
+        # Free user - check lifetime limit
+        total_tokens = 0
+        for model_key, tokens_dict in n_used_tokens_dict.items():
+            total_tokens += tokens_dict.get(C.DB_N_INPUT_TOKENS, 0) + tokens_dict.get(C.DB_N_OUTPUT_TOKENS, 0)
+            
+        if total_tokens >= C.FREE_TOKEN_LIMIT:
+            text = get_localized_text("subscription_limit_reached", user_id)
+            await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+            return False
+            
+        return True
+
+
 async def show_subscription_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     user_id = update.message.from_user.id
@@ -939,10 +1050,20 @@ async def show_subscription_handle(update: Update, context: CallbackContext):
         text = get_localized_text("subscription_status_premium", user_id).format(
             expiry_date=expiry.strftime("%Y-%m-%d")
         )
+        
+        # Add user status badge if applicable
+        status_badge = get_user_status_badge(user_id)
+        if status_badge:
+            text += f"\n\n{status_badge}"
+        
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     else:
         title = get_localized_text("subscription_title", user_id)
         description = get_localized_text("subscription_description", user_id)
+        
+        # Use test pricing for test users
+        is_test = is_test_user(user_id)
+        price = C.TEST_SUBSCRIPTION_PRICE_STARS if is_test else C.SUBSCRIPTION_PRICE_STARS
         
         await context.bot.send_invoice(
             chat_id=update.message.chat_id,
@@ -951,7 +1072,7 @@ async def show_subscription_handle(update: Update, context: CallbackContext):
             payload=C.SUBSCRIPTION_PAYLOAD_MONTHLY,
             provider_token="",  # Empty for Telegram Stars
             currency="XTR",
-            prices=[LabeledPrice("Premium 1 Month", C.SUBSCRIPTION_PRICE_STARS)],
+            prices=[LabeledPrice("Premium 1 Month", price)],
             start_parameter="premium-subscription"
         )
 
@@ -972,16 +1093,27 @@ async def successful_payment_callback(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     user_id = update.message.from_user.id
     
+    # Determine if user is a test user
+    is_test = is_test_user(user_id)
+    subscription_duration = C.TEST_SUBSCRIPTION_DURATION_DAYS if is_test else C.SUBSCRIPTION_DURATION_DAYS
+    
     # Calculate new expiry date
     current_expiry = db.get_user_attribute(user_id, C.DB_SUBSCRIPTION_EXPIRY)
     if current_expiry and current_expiry > datetime.now():
-        new_expiry = current_expiry + timedelta(days=C.SUBSCRIPTION_DURATION_DAYS)
+        new_expiry = current_expiry + timedelta(days=subscription_duration)
     else:
-        new_expiry = datetime.now() + timedelta(days=C.SUBSCRIPTION_DURATION_DAYS)
+        new_expiry = datetime.now() + timedelta(days=subscription_duration)
         
     # Update user subscription
     db.set_user_attribute(user_id, C.DB_SUBSCRIPTION_STATUS, C.SUBSCRIPTION_STATUS_PREMIUM)
     db.set_user_attribute(user_id, C.DB_SUBSCRIPTION_EXPIRY, new_expiry)
+    
+    # Set monthly token reset date
+    monthly_reset_date = datetime.now() + timedelta(days=subscription_duration)
+    db.set_user_attribute(user_id, C.DB_MONTHLY_TOKEN_RESET_DATE, monthly_reset_date)
+    
+    # Reset token usage for new subscription period
+    db.set_user_attribute(user_id, C.DB_N_USED_TOKENS, {})
     
     # Add to history
     payment_info = {

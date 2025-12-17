@@ -34,7 +34,7 @@ en:
   nothing_to_cancel: "<i>Nothing to cancel...</i>"
   voice_recognition_unavailable: "🥲 Voice recognition is not available (Permission denied for whisper-1 model). Please contact admin."
   voice_processing_error: "🥲 Error processing voice message. Please try again later."
-  error_message: "🥲 Something went wrong: {reason}"
+  error_message: "🥲 Something went wrong: {reason}\n\nPlease contact @ru5c55an if the problem persists."
   select_chat_mode: "Select <b>chat mode</b> ({n_modes} modes available):"
   select_settings: "\nSelect <b>model</b>:"
   details: "🏷️ Details:\n"
@@ -79,19 +79,21 @@ en:
   # Subscription
   subscription_title: "🌟 Premium Subscription"
   subscription_description: |
-    Support the bot and get premium status!
+    **Premium gives you:**
+     **• 📸 Training analysis from screenshots**
+     **• 🧠 Personalized training plans**
+     **• ⚡ Custom workouts on demand**
+     **• 📊 Load & recovery insights**
+     **• 🏁 Race & goal-focused programs**
     
-    **Premium Benefits:**
-    ✨ Unlimited access to AI Trainer
-    ✨ Priority support
-    ✨ Support future development
-    
-    **Price:** 100 Stars / month
-  subscription_button: "Subscribe for 100 Stars"
+    **Proceed** for 1000 stars / mo
+  subscription_button: "Subscribe for 1000 Stars"
   subscription_success: "🎉 Thank you! Your subscription is active until <b>{expiry_date}</b>."
   subscription_status_premium: "🌟 Premium active until <b>{expiry_date}</b>"
   subscription_status_free: "Free plan"
   subscription_check_command: "Check status: /subscription"
+  subscription_limit_reached: "🥲 You have reached your free token limit. Please /subscribe to continue using the bot."
+  premium_limit_reached: "🥲 You have reached your monthly premium token limit. Your quota will reset on {reset_date}. Contact support if you need more."
   payment_error: "Something went wrong..."
 
 ru:
@@ -130,7 +132,7 @@ ru:
   nothing_to_cancel: "<i>Нечего отменять...</i>"
   voice_recognition_unavailable: "🥲 Распознавание голоса недоступно (Нет прав для модели whisper-1). Пожалуйста, свяжитесь с администратором."
   voice_processing_error: "🥲 Ошибка обработки голосового сообщения. Пожалуйста, попробуйте позже."
-  error_message: "🥲 Что-то пошло не так: {reason}"
+  error_message: "🥲 Что-то пошло не так: {reason}\n\nПожалуйста, свяжитесь с @ru5c55an если проблема повторяется."
   select_chat_mode: "Выберите <b>режим чата</b> (доступно {n_modes} режимов):"
   select_settings: "\nВыберите <b>модель</b>:"
   details: "🏷️ Детали:\n"
@@ -175,17 +177,19 @@ ru:
   # Subscription
   subscription_title: "🌟 Премиум Подписка"
   subscription_description: |
-    Поддержите бота и получите премиум статус!
+    **Премиум даёт вам:**
+     **• 📸 Анализ тренировок по скриншотам**
+     **• 🧠 Персонализированные планы тренировок**
+     **• ⚡ Индивидуальные тренировки по запросу**
+     **• 📊 Анализ нагрузки и восстановления**
+     **• 🏁 Программы подготовки к гонкам**
     
-    **Преимущества Премиум:**
-    ✨ Безлимитный доступ к AI Тренеру
-    ✨ Приоритетная поддержка
-    ✨ Поддержка развития проекта
-    
-    **Цена:** 100 Stars / месяц
-  subscription_button: "Подписаться за 100 Stars"
+    **Оформить** за 1000 звёзд / мес
+  subscription_button: "Подписаться за 1000 Stars"
   subscription_success: "🎉 Спасибо! Ваша подписка активна до <b>{expiry_date}</b>."
   subscription_status_premium: "🌟 Премиум активен до <b>{expiry_date}</b>"
   subscription_status_free: "Бесплатный план"
   subscription_check_command: "Проверить статус: /subscription"
+  subscription_limit_reached: "🥲 Вы исчерпали лимит бесплатных токенов. Пожалуйста, оформите /subscribe для продолжения использования бота."
+  premium_limit_reached: "🥲 Вы исчерпали месячный лимит премиум токенов. Ваша квота обновится {reset_date}. Свяжитесь с поддержкой, если нужно больше."
   payment_error: "Что-то пошло не так..."

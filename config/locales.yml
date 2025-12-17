@@ -4,7 +4,6 @@ en:
     Commands:
     🔄 /retry – Regenerate last bot answer
     🆕 /new – Start new dialog
-    ⚙️ /settings – Show settings
     💰 /balance – Show balance
     🌐 /language – Select language
     👤 /profile – Manage your profile
@@ -44,6 +43,7 @@ en:
   editing_not_supported: "🥲 Unfortunately, message <b>editing</b> is not supported"
   select_language: "Select <b>language</b>:"
   language_set: "Language set to <b>{language}</b>"
+  image_generation_rejected: "🥲 Your request was rejected as a result of our safety system. Please try different prompt."
   starting_new_dialog: "Starting new dialog ✅"
   profile_title: "👤 Your Profile"
   profile_empty: "Your profile is empty. Please fill in your information to get personalized training recommendations."
@@ -102,7 +102,6 @@ ru:
     Команды:
     🔄 /retry – Перегенерировать последний ответ
     🆕 /new – Начать новый диалог
-    ⚙️ /settings – Показать настройки
     💰 /balance – Показать баланс
     🌐 /language – Выбрать язык
     👤 /profile – Управление профилем
@@ -142,6 +141,7 @@ ru:
   editing_not_supported: "🥲 К сожалению, <b>редактирование</b> сообщений не поддерживается"
   select_language: "Выберите <b>язык</b>:"
   language_set: "Язык установлен на <b>{language}</b>"
+  image_generation_rejected: "🥲 Ваш запрос был отклонен системой безопасности. Пожалуйста, попробуйте другой запрос."
   starting_new_dialog: "Начинаю новый диалог ✅"
   profile_title: "👤 Ваш профиль"
   profile_empty: "Ваш профиль пуст. Пожалуйста, заполните информацию для получения персонализированных рекомендаций по тренировкам."

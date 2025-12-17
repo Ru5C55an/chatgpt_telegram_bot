@@ -41,42 +41,23 @@ db = database.Database()
 logger = logging.getLogger(__name__)
 
 user_semaphores = {}
-user_semaphores = {}
 user_tasks = {}
 
 def get_localized_text(key, user_id):
-    language = db.get_user_attribute(user_id, "current_language") or "en"
+    language = db.get_user_attribute(user_id, C.DB_CURRENT_LANGUAGE) or C.DEFAULT_LANGUAGE
     return config.locales[language].get(key, config.locales["en"][key])
 
-HELP_MESSAGE = """Commands:
-⚪ /retry – Regenerate last bot answer
-⚪ /new – Start new dialog
-⚪ /mode – Select chat mode
-⚪ /settings – Show settings
-⚪ /balance – Show balance
-⚪ /help – Show help
-
-🎨 Generate images from text prompts in <b>👩‍🎨 Artist</b> /mode
-👥 Add bot to <b>group chat</b>: /help_group_chat
-🎤 You can send <b>Voice Messages</b> instead of text
-"""
-
-HELP_GROUP_CHAT_MESSAGE = """You can add bot to any <b>group chat</b> to help and entertain its participants!
-
-Instructions (see <b>video</b> below):
-1. Add the bot to the group chat
-2. Make it an <b>admin</b>, so that it can see messages (all other rights can be restricted)
-3. You're awesome!
-
-To get a reply from the bot in the chat – @ <b>tag</b> it or <b>reply</b> to its message.
-For example: "{bot_username} write a poem about Telegram"
-"""
-
+def get_formatted_date(date, user_id):
+    if not date:
+        return ""
+    language = db.get_user_attribute(user_id, C.DB_CURRENT_LANGUAGE) or C.DEFAULT_LANGUAGE
+    if language == "ru":
+        return date.strftime("%d.%m.%Y %H:%M")
+    return date.strftime("%Y-%m-%d %H:%M")
 
 def split_text_into_chunks(text, chunk_size):
     for i in range(0, len(text), chunk_size):
         yield text[i:i + chunk_size]
-
 
 async def register_user_if_not_exists(update: Update, context: CallbackContext, user: User):
     if not db.check_if_user_exists(user.id):
@@ -89,7 +70,7 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
         )
         db.start_new_dialog(user.id)
 
-    if db.get_user_attribute(user.id, "current_dialog_id") is None:
+    if db.get_user_attribute(user.id, C.DB_CURRENT_DIALOG_ID) is None:
         db.start_new_dialog(user.id)
 
     if user.id not in user_semaphores:
@@ -120,7 +101,6 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
             }
         }
         db.set_user_attribute(user.id, C.DB_N_USED_TOKENS, new_n_used_tokens)
-        db.set_user_attribute(user.id, C.DB_N_USED_TOKENS, new_n_used_tokens)
 
     # voice message transcription
     if db.get_user_attribute(user.id, C.DB_N_TRANSCRIBED_SECONDS) is None:
@@ -138,7 +118,8 @@ async def is_bot_mentioned(update: Update, context: CallbackContext):
          if message.chat.type == "private":
              return True
 
-         if message.text is not None and ("@" + context.bot.username) in message.text:
+         text = message.text or message.caption
+         if text is not None and ("@" + context.bot.username) in text:
              return True
 
          if message.reply_to_message is not None:
@@ -157,8 +138,8 @@ async def start_handle(update: Update, context: CallbackContext):
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
     db.start_new_dialog(user_id)
 
-    reply_text = get_localized_text("welcome", user_id)
-    reply_text += get_localized_text("help", user_id)
+    reply_text = get_localized_text(C.LOC_WELCOME, user_id)
+    reply_text += get_localized_text(C.LOC_HELP, user_id)
 
     await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
     await show_profile_handle(update, context)
@@ -168,7 +149,7 @@ async def help_handle(update: Update, context: CallbackContext):
     await register_user_if_not_exists(update, context, update.message.from_user)
     user_id = update.message.from_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
-    await update.message.reply_text(get_localized_text("help", user_id), parse_mode=ParseMode.HTML)
+    await update.message.reply_text(get_localized_text(C.LOC_HELP, user_id), parse_mode=ParseMode.HTML)
 
 
 async def help_group_chat_handle(update: Update, context: CallbackContext):
@@ -176,7 +157,7 @@ async def help_group_chat_handle(update: Update, context: CallbackContext):
      user_id = update.message.from_user.id
      db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
-     text = get_localized_text("help_group_chat", user_id).format(bot_username="@" + context.bot.username)
+     text = get_localized_text(C.LOC_HELP_GROUP_CHAT, user_id).format(bot_username="@" + context.bot.username)
 
      await update.message.reply_text(text, parse_mode=ParseMode.HTML)
      await update.message.reply_video(config.help_group_chat_video_path)
@@ -191,7 +172,7 @@ async def retry_handle(update: Update, context: CallbackContext):
 
     dialog_messages = db.get_dialog_messages(user_id, dialog_id=None)
     if len(dialog_messages) == 0:
-        await update.message.reply_text(get_localized_text("no_message_to_retry", user_id))
+        await update.message.reply_text(get_localized_text(C.LOC_NO_MESSAGE_TO_RETRY, user_id))
         return
 
     last_dialog_message = dialog_messages.pop()
@@ -211,7 +192,7 @@ async def _vision_message_handle_fn(
 
     if current_model not in ["gpt-4-vision-preview", "gpt-4o", "gpt-5-mini-2025-08-07"]:
         await update.message.reply_text(
-            get_localized_text("images_processing_not_available", user_id),
+            get_localized_text(C.LOC_IMAGES_PROCESSING_NOT_AVAILABLE, user_id),
             parse_mode=ParseMode.HTML,
         )
         return
@@ -225,7 +206,7 @@ async def _vision_message_handle_fn(
     if use_new_dialog_timeout:
         if (datetime.now() - db.get_user_attribute(user_id, C.DB_LAST_INTERACTION)).seconds > config.new_dialog_timeout and len(db.get_dialog_messages(user_id)) > 0:
             db.start_new_dialog(user_id)
-            await update.message.reply_text(get_localized_text("starting_new_dialog_timeout", user_id).format(mode=config.chat_modes[chat_mode]['name']), parse_mode=ParseMode.HTML)
+            await update.message.reply_text(get_localized_text(C.LOC_STARTING_NEW_DIALOG_TIMEOUT, user_id).format(mode=config.chat_modes[chat_mode]['name']), parse_mode=ParseMode.HTML)
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     buf = None
@@ -260,7 +241,7 @@ async def _vision_message_handle_fn(
         user_profile = db.get_user_attribute(user_id, C.DB_USER_PROFILE) or {}
         if config.enable_message_streaming:
             gen = chatgpt_instance.send_vision_message_stream(
-                message,
+                _message,
                 dialog_messages=dialog_messages,
                 image_buffer=buf,
                 chat_mode=chat_mode,
@@ -273,7 +254,7 @@ async def _vision_message_handle_fn(
                 (n_input_tokens, n_output_tokens),
                 n_first_dialog_messages_removed,
             ) = await chatgpt_instance.send_vision_message(
-                message,
+                _message,
                 dialog_messages=dialog_messages,
                 image_buffer=buf,
                 chat_mode=chat_mode,
@@ -356,14 +337,17 @@ async def _vision_message_handle_fn(
         raise
 
     except Exception as e:
-        error_text = get_localized_text("error_message", user_id).format(reason=str(e))
+        if "Timed out" in str(e) and prev_answer:
+            logger.warning(f"Timeout in _vision_message_handle_fn, but response was partially sent. Error: {e}")
+            return
+        error_text = get_localized_text(C.LOC_ERROR_MESSAGE, user_id).format(reason=str(e))
         logger.error(error_text)
         await update.message.reply_text(error_text)
         return
 
 async def unsupport_message_handle(update: Update, context: CallbackContext, message=None):
     user_id = update.message.from_user.id
-    error_text = get_localized_text("unsupported_message_type", user_id)
+    error_text = get_localized_text(C.LOC_UNSUPPORTED_MESSAGE_TYPE, user_id)
     logger.error(error_text)
     await update.message.reply_text(error_text)
     return
@@ -378,7 +362,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
         await edited_message_handle(update, context)
         return
 
-    _message = message or update.message.text
+    _message = message or update.message.text or update.message.caption or ""
 
     # remove bot mention (in group chats)
     if update.message.chat.type != "private":
@@ -400,19 +384,19 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
                 numeric_value = float(value)
                 profile[field] = numeric_value
                 db.set_user_attribute(user_id, C.DB_USER_PROFILE, profile)
-                text = get_localized_text("profile_updated", user_id)
+                text = get_localized_text(C.LOC_PROFILE_UPDATED, user_id)
                 del context.user_data[C.CONTEXT_PROFILE_FIELD_EDITING]
                 await update.message.reply_text(text, parse_mode=ParseMode.HTML)
                 await prompt_next_empty_profile_field(user_id, context, update)
                 return
             except ValueError:
-                text = get_localized_text("profile_invalid_number", user_id)
+                text = get_localized_text(C.LOC_PROFILE_INVALID_NUMBER, user_id)
                 await update.message.reply_text(text, parse_mode=ParseMode.HTML)
                 return
         elif field == C.PROFILE_GOALS:
             profile[field] = value
             db.set_user_attribute(user_id, C.DB_USER_PROFILE, profile)
-            text = get_localized_text("profile_updated", user_id)
+            text = get_localized_text(C.LOC_PROFILE_UPDATED, user_id)
             del context.user_data[C.CONTEXT_PROFILE_FIELD_EDITING]
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             await prompt_next_empty_profile_field(user_id, context, update)
@@ -441,7 +425,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
         if use_new_dialog_timeout:
             if (datetime.now() - db.get_user_attribute(user_id, C.DB_LAST_INTERACTION)).seconds > config.new_dialog_timeout and len(db.get_dialog_messages(user_id)) > 0:
                 db.start_new_dialog(user_id)
-                await update.message.reply_text(get_localized_text("starting_new_dialog_timeout", user_id).format(mode=config.chat_modes[chat_mode]['name']), parse_mode=ParseMode.HTML)
+                await update.message.reply_text(get_localized_text(C.LOC_STARTING_NEW_DIALOG_TIMEOUT, user_id).format(mode=config.chat_modes[chat_mode]['name']), parse_mode=ParseMode.HTML)
         db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
         # in case of CancelledError
@@ -455,7 +439,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             await update.message.chat.send_action(action="typing")
 
             if _message is None or len(_message) == 0:
-                 await update.message.reply_text(get_localized_text("empty_message", user_id), parse_mode=ParseMode.HTML)
+                 await update.message.reply_text(get_localized_text(C.LOC_EMPTY_MESSAGE, user_id), parse_mode=ParseMode.HTML)
                  return
 
             dialog_messages = db.get_dialog_messages(user_id, dialog_id=None)
@@ -465,7 +449,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             }[config.chat_modes[chat_mode]["parse_mode"]]
 
             chatgpt_instance = openai_utils.ChatGPT(model=current_model)
-            user_profile = db.get_user_attribute(user_id, "user_profile") or {}
+            user_profile = db.get_user_attribute(user_id, C.DB_USER_PROFILE) or {}
             if config.enable_message_streaming:
                 gen = chatgpt_instance.send_message_stream(_message, dialog_messages=dialog_messages, chat_mode=chat_mode, user_language=db.get_user_attribute(user_id, C.DB_CURRENT_LANGUAGE) or C.DEFAULT_LANGUAGE, user_profile=user_profile)
             else:
@@ -522,7 +506,10 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             raise
 
         except Exception as e:
-            error_text = get_localized_text("error_message", user_id).format(reason=str(e))
+            if "Timed out" in str(e) and prev_answer:
+                logger.warning(f"Timeout in message_handle_fn, but response was partially sent. Error: {e}")
+                return
+            error_text = get_localized_text(C.LOC_ERROR_MESSAGE, user_id).format(reason=str(e))
             logger.error(error_text)
             await update.message.reply_text(error_text)
             return
@@ -530,9 +517,9 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
         # send message if some messages were removed from the context
         if n_first_dialog_messages_removed > 0:
             if n_first_dialog_messages_removed == 1:
-                text = get_localized_text("context_removed_first", user_id)
+                text = get_localized_text(C.LOC_CONTEXT_REMOVED_FIRST, user_id)
             else:
-                text = get_localized_text("context_removed_multiple", user_id).format(n_messages=n_first_dialog_messages_removed)
+                text = get_localized_text(C.LOC_CONTEXT_REMOVED_MULTIPLE, user_id).format(n_messages=n_first_dialog_messages_removed)
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
     async with user_semaphores[user_id]:
@@ -543,7 +530,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
 
             if current_model not in ["gpt-4o", "gpt-4-vision-preview", "gpt-5-mini-2025-08-07"]:
                 current_model = "gpt-5-mini-2025-08-07"
-                db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, "gpt-5-mini-2025-08-07")
+                db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, C.OPENAI_MODEL_GPT_5_MINI)
             task = asyncio.create_task(
                 _vision_message_handle_fn(update, context, message=_message, use_new_dialog_timeout=use_new_dialog_timeout)
             )
@@ -557,7 +544,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
         try:
             await task
         except asyncio.CancelledError:
-            await update.message.reply_text(get_localized_text("canceled", user_id), parse_mode=ParseMode.HTML)
+            await update.message.reply_text(get_localized_text(C.LOC_CANCELED, user_id), parse_mode=ParseMode.HTML)
         else:
             pass
         finally:
@@ -570,7 +557,7 @@ async def is_previous_message_not_answered_yet(update: Update, context: Callback
 
     user_id = update.message.from_user.id
     if user_semaphores[user_id].locked():
-        text = get_localized_text("wait_for_reply", user_id)
+        text = get_localized_text(C.LOC_WAIT_FOR_REPLY, user_id)
         await update.message.reply_text(text, reply_to_message_id=update.message.id, parse_mode=ParseMode.HTML)
         return True
     else:
@@ -605,12 +592,12 @@ async def voice_message_handle(update: Update, context: CallbackContext):
     try:
         transcribed_text = await openai_utils.transcribe_audio(buf)
     except openai.error.PermissionError:
-        text = get_localized_text("voice_recognition_unavailable", user_id)
+        text = get_localized_text(C.LOC_VOICE_RECOGNITION_UNAVAILABLE, user_id)
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         return
     except Exception as e:
         logger.error(f"Error transcribing audio: {e}")
-        text = get_localized_text("voice_processing_error", user_id)
+        text = get_localized_text(C.LOC_VOICE_PROCESSING_ERROR, user_id)
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         return
     text = f"🎤: <i>{transcribed_text}</i>"
@@ -637,7 +624,7 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
         image_urls = await openai_utils.generate_images(message, n_images=config.return_n_generated_images, size=config.image_size)
     except openai.error.InvalidRequestError as e:
         if str(e).startswith("Your request was rejected as a result of our safety system"):
-            text = get_localized_text("image_generation_rejected", user_id)
+            text = get_localized_text(C.LOC_IMAGE_GENERATION_REJECTED, user_id)
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             return
         else:
@@ -657,17 +644,17 @@ async def new_dialog_handle(update: Update, context: CallbackContext):
 
     user_id = update.message.from_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
-    db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, "gpt-5-mini-2025-08-07")
+    db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, C.OPENAI_MODEL_GPT_5_MINI)
 
     db.start_new_dialog(user_id)
-    await update.message.reply_text(get_localized_text("starting_new_dialog", user_id))
+    await update.message.reply_text(get_localized_text(C.LOC_STARTING_NEW_DIALOG, user_id))
 
     chat_mode = db.get_user_attribute(user_id, C.DB_CURRENT_CHAT_MODE)
     if chat_mode not in config.chat_modes.keys():
         chat_mode = "ai_trainer"
         db.set_user_attribute(user_id, C.DB_CURRENT_CHAT_MODE, chat_mode)
     
-    language = db.get_user_attribute(user_id, "current_language") or "en"
+    language = db.get_user_attribute(user_id, C.DB_CURRENT_LANGUAGE) or C.DEFAULT_LANGUAGE
     welcome_message = config.chat_modes[chat_mode]['welcome_message'][language]
     await update.message.reply_text(welcome_message, parse_mode=ParseMode.HTML)
 
@@ -682,12 +669,12 @@ async def cancel_handle(update: Update, context: CallbackContext):
         task = user_tasks[user_id]
         task.cancel()
     else:
-        await update.message.reply_text(get_localized_text("nothing_to_cancel", user_id), parse_mode=ParseMode.HTML)
+        await update.message.reply_text(get_localized_text(C.LOC_NOTHING_TO_CANCEL, user_id), parse_mode=ParseMode.HTML)
 
 
 def get_chat_mode_menu(page_index: int, user_id: int):
     n_chat_modes_per_page = config.n_chat_modes_per_page
-    text = get_localized_text("select_chat_mode", user_id).format(n_modes=len(config.chat_modes))
+    text = get_localized_text(C.LOC_SELECT_CHAT_MODE, user_id).format(n_modes=len(config.chat_modes))
 
     # buttons
     chat_mode_keys = list(config.chat_modes.keys())
@@ -783,7 +770,7 @@ def get_settings_menu(user_id: int):
     for score_key, score_value in score_dict.items():
         text += "🟢" * score_value + "⚪️" * (5 - score_value) + f" – {score_key}\n\n"
 
-    text += get_localized_text("select_settings", user_id)
+    text += get_localized_text(C.LOC_SELECT_SETTINGS, user_id)
 
     # buttons to choose models
     buttons = []
@@ -849,7 +836,7 @@ async def show_balance_handle(update: Update, context: CallbackContext):
         n_generated_images = db.get_user_attribute(user_id, C.DB_N_GENERATED_IMAGES)
         n_transcribed_seconds = db.get_user_attribute(user_id, C.DB_N_TRANSCRIBED_SECONDS)
 
-        details_text = get_localized_text("details", user_id)
+        details_text = get_localized_text(C.LOC_DETAILS, user_id)
         for model_key in sorted(n_used_tokens_dict.keys()):
             n_input_tokens, n_output_tokens = n_used_tokens_dict[model_key][C.DB_N_INPUT_TOKENS], n_used_tokens_dict[model_key][C.DB_N_OUTPUT_TOKENS]
             total_n_used_tokens += n_input_tokens + n_output_tokens
@@ -874,8 +861,8 @@ async def show_balance_handle(update: Update, context: CallbackContext):
 
         total_n_spent_dollars += voice_recognition_n_spent_dollars
 
-        text = get_localized_text("spent", user_id).format(amount=f"{total_n_spent_dollars:.03f}")
-        text += get_localized_text("used_tokens", user_id).format(amount=total_n_used_tokens)
+        text = get_localized_text(C.LOC_SPENT, user_id).format(amount=f"{total_n_spent_dollars:.03f}")
+        text += get_localized_text(C.LOC_USED_TOKENS, user_id).format(amount=total_n_used_tokens)
         text += details_text
         
         # Add user status badge
@@ -901,7 +888,7 @@ async def show_balance_handle(update: Update, context: CallbackContext):
             
             text = f"📊 <b>Tokens remaining:</b> {remaining_tokens:,} / {token_limit:,}\n"
             if reset_date:
-                text += f"🔄 <b>Resets on:</b> {reset_date.strftime('%Y-%m-%d')}"
+                text += f"🔄 <b>Resets on:</b> {get_formatted_date(reset_date, user_id)}"
         else:
             # Free user - show remaining tokens
             remaining_tokens = max(0, C.FREE_TOKEN_LIMIT - total_used_tokens)
@@ -913,7 +900,7 @@ async def show_balance_handle(update: Update, context: CallbackContext):
 
 async def edited_message_handle(update: Update, context: CallbackContext):
     if update.edited_message.chat.type == "private":
-        text = get_localized_text("editing_not_supported", update.edited_message.from_user.id)
+        text = get_localized_text(C.LOC_EDITING_NOT_SUPPORTED, update.edited_message.from_user.id)
         await update.edited_message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
@@ -922,7 +909,7 @@ async def show_language_handle(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
-    text = get_localized_text("select_language", user_id)
+    text = get_localized_text(C.LOC_SELECT_LANGUAGE, user_id)
     
     # Language display with flags and native names
     language_display = {
@@ -947,9 +934,9 @@ async def set_language_handle(update: Update, context: CallbackContext):
     await query.answer()
 
     _, language_code = query.data.split("|")
-    db.set_user_attribute(user_id, "current_language", language_code)
+    db.set_user_attribute(user_id, C.DB_CURRENT_LANGUAGE, language_code)
 
-    text = get_localized_text("language_set", user_id).format(language=language_code)
+    text = get_localized_text(C.LOC_LANGUAGE_SET, user_id).format(language=language_code)
     await context.bot.send_message(
         update.callback_query.message.chat.id,
         text,
@@ -1018,8 +1005,8 @@ async def check_user_quota(user_id: int, update: Update, context: CallbackContex
         
         # Check if premium user exceeded monthly limit
         if total_tokens >= token_limit:
-            text = get_localized_text("premium_limit_reached", user_id).format(
-                reset_date=reset_date.strftime("%Y-%m-%d")
+            text = get_localized_text(C.LOC_PREMIUM_LIMIT_REACHED, user_id).format(
+                reset_date=get_formatted_date(reset_date, user_id)
             )
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             return False
@@ -1032,7 +1019,7 @@ async def check_user_quota(user_id: int, update: Update, context: CallbackContex
             total_tokens += tokens_dict.get(C.DB_N_INPUT_TOKENS, 0) + tokens_dict.get(C.DB_N_OUTPUT_TOKENS, 0)
             
         if total_tokens >= C.FREE_TOKEN_LIMIT:
-            text = get_localized_text("subscription_limit_reached", user_id)
+            text = get_localized_text(C.LOC_SUBSCRIPTION_LIMIT_REACHED, user_id)
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             return False
             
@@ -1047,8 +1034,8 @@ async def show_subscription_handle(update: Update, context: CallbackContext):
     expiry = db.get_user_attribute(user_id, C.DB_SUBSCRIPTION_EXPIRY)
     
     if is_premium and expiry:
-        text = get_localized_text("subscription_status_premium", user_id).format(
-            expiry_date=expiry.strftime("%Y-%m-%d")
+        text = get_localized_text(C.LOC_SUBSCRIPTION_STATUS_PREMIUM, user_id).format(
+            expiry_date=get_formatted_date(expiry, user_id)
         )
         
         # Add user status badge if applicable
@@ -1058,8 +1045,8 @@ async def show_subscription_handle(update: Update, context: CallbackContext):
         
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     else:
-        title = get_localized_text("subscription_title", user_id)
-        description = get_localized_text("subscription_description", user_id)
+        title = get_localized_text(C.LOC_SUBSCRIPTION_TITLE, user_id)
+        description = get_localized_text(C.LOC_SUBSCRIPTION_DESCRIPTION, user_id)
         
         # Use test pricing for test users
         is_test = is_test_user(user_id)
@@ -1083,7 +1070,7 @@ async def precheckout_callback(update: Update, context: CallbackContext):
     if query.invoice_payload != C.SUBSCRIPTION_PAYLOAD_MONTHLY:
         # Answer False if something went wrong
         user_id = update.effective_user.id
-        error_text = get_localized_text("payment_error", user_id)
+        error_text = get_localized_text(C.LOC_PAYMENT_ERROR, user_id)
         await query.answer(ok=False, error_message=error_text)
     else:
         await query.answer(ok=True)
@@ -1128,8 +1115,8 @@ async def successful_payment_callback(update: Update, context: CallbackContext):
     history.append(payment_info)
     db.set_user_attribute(user_id, C.DB_SUBSCRIPTION_HISTORY, history)
     
-    text = get_localized_text("subscription_success", user_id).format(
-        expiry_date=new_expiry.strftime("%Y-%m-%d")
+    text = get_localized_text(C.LOC_SUBSCRIPTION_SUCCESS, user_id).format(
+        expiry_date=get_formatted_date(new_expiry, user_id)
     )
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     
@@ -1156,11 +1143,11 @@ async def prompt_next_empty_profile_field(user_id: int, context: CallbackContext
             context.user_data[C.CONTEXT_PROFILE_FIELD_EDITING] = field
             
             if field == C.PROFILE_FITNESS_LEVEL:
-                text = get_localized_text("profile_select_fitness_level", user_id)
+                text = get_localized_text(C.LOC_PROFILE_SELECT_FITNESS_LEVEL, user_id)
                 keyboard = [
-                    [InlineKeyboardButton(get_localized_text("fitness_level_beginner", user_id), callback_data="profile_set|fitness_level|beginner")],
-                    [InlineKeyboardButton(get_localized_text("fitness_level_intermediate", user_id), callback_data="profile_set|fitness_level|intermediate")],
-                    [InlineKeyboardButton(get_localized_text("fitness_level_advanced", user_id), callback_data="profile_set|fitness_level|advanced")],
+                    [InlineKeyboardButton(get_localized_text(C.LOC_FITNESS_LEVEL_BEGINNER, user_id), callback_data="profile_set|fitness_level|beginner")],
+                    [InlineKeyboardButton(get_localized_text(C.LOC_FITNESS_LEVEL_INTERMEDIATE, user_id), callback_data="profile_set|fitness_level|intermediate")],
+                    [InlineKeyboardButton(get_localized_text(C.LOC_FITNESS_LEVEL_ADVANCED, user_id), callback_data="profile_set|fitness_level|advanced")],
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 if update.callback_query:
@@ -1169,11 +1156,11 @@ async def prompt_next_empty_profile_field(user_id: int, context: CallbackContext
                     await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
                     
             elif field == C.PROFILE_GENDER:
-                text = get_localized_text("profile_select_gender", user_id)
+                text = get_localized_text(C.LOC_PROFILE_SELECT_GENDER, user_id)
                 keyboard = [
-                    [InlineKeyboardButton(get_localized_text("gender_male", user_id), callback_data="profile_set|gender|male")],
-                    [InlineKeyboardButton(get_localized_text("gender_female", user_id), callback_data="profile_set|gender|female")],
-                    [InlineKeyboardButton(get_localized_text("gender_other", user_id), callback_data="profile_set|gender|other")],
+                    [InlineKeyboardButton(get_localized_text(C.LOC_GENDER_MALE, user_id), callback_data="profile_set|gender|male")],
+                    [InlineKeyboardButton(get_localized_text(C.LOC_GENDER_FEMALE, user_id), callback_data="profile_set|gender|female")],
+                    [InlineKeyboardButton(get_localized_text(C.LOC_GENDER_OTHER, user_id), callback_data="profile_set|gender|other")],
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 if update.callback_query:
@@ -1182,11 +1169,11 @@ async def prompt_next_empty_profile_field(user_id: int, context: CallbackContext
                     await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
             else:
                 if field == C.PROFILE_HEIGHT:
-                    text = get_localized_text("profile_enter_height", user_id)
+                    text = get_localized_text(C.LOC_PROFILE_ENTER_HEIGHT, user_id)
                 elif field == C.PROFILE_WEIGHT:
-                    text = get_localized_text("profile_enter_weight", user_id)
+                    text = get_localized_text(C.LOC_PROFILE_ENTER_WEIGHT, user_id)
                 elif field == C.PROFILE_GOALS:
-                    text = get_localized_text("profile_enter_goals", user_id)
+                    text = get_localized_text(C.LOC_PROFILE_ENTER_GOALS, user_id)
                 
                 if update.callback_query:
                     await update.callback_query.message.reply_text(text, parse_mode=ParseMode.HTML)
@@ -1203,27 +1190,27 @@ async def show_profile_handle(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
-    profile = db.get_user_attribute(user_id, "user_profile") or {}
+    profile = db.get_user_attribute(user_id, C.DB_USER_PROFILE) or {}
     
     # Format profile data
     height = f"{profile[C.PROFILE_HEIGHT]} cm" if profile.get(C.PROFILE_HEIGHT) else "-"
-    weight = f"{profile[C.PROFILE_WEIGHT]} kg" if profile.get(C.PROFILE_WEIGHT) else "-"
-    fitness_level = profile.get(C.PROFILE_FITNESS_LEVEL) or "-"
-    goals = profile.get(C.PROFILE_GOALS) or "-"
-    gender = profile.get(C.PROFILE_GENDER) or "-"
-    
-    text = get_localized_text("profile_title", user_id) + "\n\n"
-    text += get_localized_text("profile_current", user_id).format(
-        height=height, weight=weight, fitness_level=fitness_level, goals=goals, gender=gender
+    text = get_localized_text(C.LOC_PROFILE_TITLE, user_id) + "\n\n"
+    text += get_localized_text(C.LOC_PROFILE_CURRENT, user_id).format(
+        height=f"{profile.get(C.PROFILE_HEIGHT, '-')} cm" if profile.get(C.PROFILE_HEIGHT) else "-",
+        weight=f"{profile.get(C.PROFILE_WEIGHT, '-')} kg" if profile.get(C.PROFILE_WEIGHT) else "-",
+        fitness_level=profile.get(C.PROFILE_FITNESS_LEVEL, "-"),
+        goals=profile.get(C.PROFILE_GOALS, "-"),
+        gender=profile.get(C.PROFILE_GENDER, "-")
     )
-    text += "\n\n" + get_localized_text("profile_select_field", user_id)
+    
+    text += "\n\n" + get_localized_text(C.LOC_PROFILE_SELECT_FIELD, user_id)
     
     keyboard = [
-        [InlineKeyboardButton(get_localized_text("button_height", user_id), callback_data="profile_edit|height")],
-        [InlineKeyboardButton(get_localized_text("button_weight", user_id), callback_data="profile_edit|weight")],
-        [InlineKeyboardButton(get_localized_text("button_fitness_level", user_id), callback_data="profile_edit|fitness_level")],
-        [InlineKeyboardButton(get_localized_text("button_goals", user_id), callback_data="profile_edit|goals")],
-        [InlineKeyboardButton(get_localized_text("button_gender", user_id), callback_data="profile_edit|gender")],
+        [InlineKeyboardButton(get_localized_text(C.LOC_BUTTON_HEIGHT, user_id), callback_data="profile_edit|height")],
+        [InlineKeyboardButton(get_localized_text(C.LOC_BUTTON_WEIGHT, user_id), callback_data="profile_edit|weight")],
+        [InlineKeyboardButton(get_localized_text(C.LOC_BUTTON_FITNESS_LEVEL, user_id), callback_data="profile_edit|fitness_level")],
+        [InlineKeyboardButton(get_localized_text(C.LOC_BUTTON_GOALS, user_id), callback_data="profile_edit|goals")],
+        [InlineKeyboardButton(get_localized_text(C.LOC_BUTTON_GENDER, user_id), callback_data="profile_edit|gender")],
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1240,30 +1227,30 @@ async def profile_edit_callback_handle(update: Update, context: CallbackContext)
     context.user_data[C.CONTEXT_PROFILE_FIELD_EDITING] = field
     
     if field == C.PROFILE_FITNESS_LEVEL:
-        text = get_localized_text("profile_select_fitness_level", user_id)
+        text = get_localized_text(C.LOC_PROFILE_SELECT_FITNESS_LEVEL, user_id)
         keyboard = [
-            [InlineKeyboardButton(get_localized_text("fitness_level_beginner", user_id), callback_data="profile_set|fitness_level|beginner")],
-            [InlineKeyboardButton(get_localized_text("fitness_level_intermediate", user_id), callback_data="profile_set|fitness_level|intermediate")],
-            [InlineKeyboardButton(get_localized_text("fitness_level_advanced", user_id), callback_data="profile_set|fitness_level|advanced")],
+            [InlineKeyboardButton(get_localized_text(C.LOC_FITNESS_LEVEL_BEGINNER, user_id), callback_data="profile_set|fitness_level|beginner")],
+            [InlineKeyboardButton(get_localized_text(C.LOC_FITNESS_LEVEL_INTERMEDIATE, user_id), callback_data="profile_set|fitness_level|intermediate")],
+            [InlineKeyboardButton(get_localized_text(C.LOC_FITNESS_LEVEL_ADVANCED, user_id), callback_data="profile_set|fitness_level|advanced")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     elif field == C.PROFILE_GENDER:
-        text = get_localized_text("profile_select_gender", user_id)
+        text = get_localized_text(C.LOC_PROFILE_SELECT_GENDER, user_id)
         keyboard = [
-            [InlineKeyboardButton(get_localized_text("gender_male", user_id), callback_data="profile_set|gender|male")],
-            [InlineKeyboardButton(get_localized_text("gender_female", user_id), callback_data="profile_set|gender|female")],
-            [InlineKeyboardButton(get_localized_text("gender_other", user_id), callback_data="profile_set|gender|other")],
+            [InlineKeyboardButton(get_localized_text(C.LOC_GENDER_MALE, user_id), callback_data="profile_set|gender|male")],
+            [InlineKeyboardButton(get_localized_text(C.LOC_GENDER_FEMALE, user_id), callback_data="profile_set|gender|female")],
+            [InlineKeyboardButton(get_localized_text(C.LOC_GENDER_OTHER, user_id), callback_data="profile_set|gender|other")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
     else:
         if field == C.PROFILE_HEIGHT:
-            text = get_localized_text("profile_enter_height", user_id)
+            text = get_localized_text(C.LOC_PROFILE_ENTER_HEIGHT, user_id)
         elif field == C.PROFILE_WEIGHT:
-            text = get_localized_text("profile_enter_weight", user_id)
+            text = get_localized_text(C.LOC_PROFILE_ENTER_WEIGHT, user_id)
         elif field == C.PROFILE_GOALS:
-            text = get_localized_text("profile_enter_goals", user_id)
+            text = get_localized_text(C.LOC_PROFILE_ENTER_GOALS, user_id)
         
         await context.bot.send_message(user_id, text, parse_mode=ParseMode.HTML)
         try:
@@ -1284,7 +1271,7 @@ async def profile_set_callback_handle(update: Update, context: CallbackContext):
     profile[field] = value
     db.set_user_attribute(user_id, C.DB_USER_PROFILE, profile)
     
-    text = get_localized_text("profile_updated", user_id)
+    text = get_localized_text(C.LOC_PROFILE_UPDATED, user_id)
     await query.edit_message_text(text, parse_mode=ParseMode.HTML)
     await prompt_next_empty_profile_field(user_id, context, update)
 
@@ -1347,6 +1334,10 @@ def run_bot() -> None:
         .rate_limiter(AIORateLimiter(max_retries=5))
         .http_version("1.1")
         .get_updates_http_version("1.1")
+        .connect_timeout(60)
+        .read_timeout(60)
+        .write_timeout(60)
+        .pool_timeout(60)
         .post_init(post_init)
         .build()
     )

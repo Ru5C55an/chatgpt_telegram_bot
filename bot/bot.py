@@ -331,6 +331,12 @@ async def _vision_message_handle_fn(
 
         db.update_n_used_tokens(user_id, current_model, n_input_tokens, n_output_tokens)
 
+    except openai.error.RateLimitError:
+        error_text = get_localized_text(C.LOC_OPENAI_RATE_LIMIT_ERROR, user_id)
+        logger.error(f"Rate limit reached for user {user_id}")
+        await update.message.reply_text(error_text, parse_mode=ParseMode.HTML)
+        return
+
     except asyncio.CancelledError:
         # note: intermediate token updates only work when enable_message_streaming=True (config.yml)
         db.update_n_used_tokens(user_id, current_model, n_input_tokens, n_output_tokens)
@@ -499,6 +505,12 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             )
 
             db.update_n_used_tokens(user_id, current_model, n_input_tokens, n_output_tokens)
+
+        except openai.error.RateLimitError:
+            error_text = get_localized_text(C.LOC_OPENAI_RATE_LIMIT_ERROR, user_id)
+            logger.error(f"Rate limit reached for user {user_id}")
+            await update.message.reply_text(error_text, parse_mode=ParseMode.HTML)
+            return
 
         except asyncio.CancelledError:
             # note: intermediate token updates only work when enable_message_streaming=True (config.yml)

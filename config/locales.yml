@@ -88,6 +88,7 @@ en:
     • <b>🏁 Race & goal-focused</b> programs
     
     <b>Proceed</b> for 1000 stars / mo
+  subscription_invoice_description: "Full access to all premium features for 30 days"
   subscription_button: "Subscribe for 1000 Stars"
   subscription_success: "🎉 Thank you! Your subscription is active until <b>{expiry_date}</b>."
   subscription_status_premium: "🌟 Premium active until <b>{expiry_date}</b>"
@@ -187,6 +188,7 @@ ru:
     • <b>🏁 Программы подготовки</b> к гонкам
 
     <b>Оформить</b> за 1000 звёзд / мес
+  subscription_invoice_description: "Полный доступ ко всем премиум-функциям на 30 дней"
   subscription_button: "Подписаться за 1000 звёзд"
   subscription_success: "🎉 Спасибо! Ваша подписка активна до <b>{expiry_date}</b>."
   subscription_status_premium: "🌟 Премиум активен до <b>{expiry_date}</b>"

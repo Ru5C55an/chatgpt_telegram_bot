@@ -1112,14 +1112,10 @@ async def show_subscription_handle(update: Update, context: CallbackContext):
     else:
         title = get_localized_text(C.LOC_SUBSCRIPTION_TITLE, user_id)
         description = get_localized_text(C.LOC_SUBSCRIPTION_DESCRIPTION, user_id)
+        invoice_description = get_localized_text(C.LOC_SUBSCRIPTION_INVOICE_DESCRIPTION, user_id)
         
         # Send a formatted message with description first
         await update.message.reply_text(description, parse_mode=ParseMode.HTML)
-        
-        # Strip HTML tags and shorten for the invoice (Telegram limit 255 chars)
-        plain_description = re.sub('<[^<]+?>', '', description).strip()
-        if len(plain_description) > 255:
-            plain_description = plain_description[:252] + "..."
         
         # Use test pricing for test users
         is_test = is_test_user(user_id)
@@ -1128,7 +1124,7 @@ async def show_subscription_handle(update: Update, context: CallbackContext):
         await context.bot.send_invoice(
             chat_id=update.message.chat_id,
             title=title,
-            description=plain_description,
+            description=invoice_description,
             payload=C.SUBSCRIPTION_PAYLOAD_MONTHLY,
             provider_token="",  # Empty for Telegram Stars
             currency="XTR",

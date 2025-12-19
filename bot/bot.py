@@ -1365,14 +1365,15 @@ async def error_handle(update: Update, context: CallbackContext) -> None:
         )
 
         # split text into multiple messages due to 4096 character limit
-        for message_chunk in split_text_into_chunks(message, 4096):
-            try:
-                await context.bot.send_message(update.effective_chat.id, message_chunk, parse_mode=ParseMode.HTML)
-            except telegram.error.BadRequest:
-                # answer has invalid characters, so we send it without parse_mode
-                await context.bot.send_message(update.effective_chat.id, message_chunk)
-    except:
-        await context.bot.send_message(update.effective_chat.id, "Some error in error handler")
+        if update and update.effective_chat:
+            for message_chunk in split_text_into_chunks(message, 4096):
+                try:
+                    await context.bot.send_message(update.effective_chat.id, message_chunk, parse_mode=ParseMode.HTML)
+                except telegram.error.BadRequest:
+                    # answer has invalid characters, so we send it without parse_mode
+                    await context.bot.send_message(update.effective_chat.id, message_chunk)
+    except Exception as e:
+        logger.error(f"Error in error handler: {e}")
 
 async def post_init(application: Application):
     # Set commands for English (default)

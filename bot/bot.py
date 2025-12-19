@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 user_semaphores = {}
 user_tasks = {}
+user_wait_messages = {}
 
 def get_localized_text(key, user_id):
     language = db.get_user_attribute(user_id, C.DB_CURRENT_LANGUAGE) or C.DEFAULT_LANGUAGE
@@ -178,10 +179,10 @@ async def retry_handle(update: Update, context: CallbackContext):
     last_dialog_message = dialog_messages.pop()
     db.set_dialog_messages(user_id, dialog_messages, dialog_id=None)  # last message was removed from the context
 
-    await message_handle(update, context, message=last_dialog_message["user"], use_new_dialog_timeout=False)
+    await message_handle(update, context, message=last_dialog_message["user"])
 
 async def _vision_message_handle_fn(
-    update: Update, context: CallbackContext, message=None, use_new_dialog_timeout: bool = True
+    update: Update, context: CallbackContext, message=None
 ):
     logger.info('_vision_message_handle_fn')
     user_id = update.message.from_user.id
@@ -202,11 +203,6 @@ async def _vision_message_handle_fn(
         chat_mode = "ai_trainer"
         db.set_user_attribute(user_id, C.DB_CURRENT_CHAT_MODE, chat_mode)
 
-    # new dialog timeout
-    if use_new_dialog_timeout:
-        if (datetime.now() - db.get_user_attribute(user_id, C.DB_LAST_INTERACTION)).seconds > config.new_dialog_timeout and len(db.get_dialog_messages(user_id)) > 0:
-            db.start_new_dialog(user_id)
-            await update.message.reply_text(get_localized_text(C.LOC_STARTING_NEW_DIALOG_TIMEOUT, user_id).format(mode=config.chat_modes[chat_mode]['name']), parse_mode=ParseMode.HTML)
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     buf = None
@@ -358,7 +354,7 @@ async def unsupport_message_handle(update: Update, context: CallbackContext, mes
     await update.message.reply_text(error_text)
     return
 
-async def message_handle(update: Update, context: CallbackContext, message=None, use_new_dialog_timeout=True):
+async def message_handle(update: Update, context: CallbackContext, message=None):
     # check if bot was mentioned (for group chats)
     if not await is_bot_mentioned(update, context):
         return
@@ -427,11 +423,6 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
         db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, current_model)
 
     async def message_handle_fn():
-        # new dialog timeout
-        if use_new_dialog_timeout:
-            if (datetime.now() - db.get_user_attribute(user_id, C.DB_LAST_INTERACTION)).seconds > config.new_dialog_timeout and len(db.get_dialog_messages(user_id)) > 0:
-                db.start_new_dialog(user_id)
-                await update.message.reply_text(get_localized_text(C.LOC_STARTING_NEW_DIALOG_TIMEOUT, user_id).format(mode=config.chat_modes[chat_mode]['name']), parse_mode=ParseMode.HTML)
         db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
         # in case of CancelledError
@@ -544,7 +535,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
                 current_model = "gpt-5-mini-2025-08-07"
                 db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, C.OPENAI_MODEL_GPT_5_MINI)
             task = asyncio.create_task(
-                _vision_message_handle_fn(update, context, message=_message, use_new_dialog_timeout=use_new_dialog_timeout)
+                _vision_message_handle_fn(update, context, message=_message)
             )
         else:
             task = asyncio.create_task(
@@ -562,6 +553,15 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
         finally:
             if user_id in user_tasks:
                 del user_tasks[user_id]
+            
+            # delete "wait for reply" messages
+            if user_id in user_wait_messages:
+                for message_id in user_wait_messages[user_id]:
+                    try:
+                        await context.bot.delete_message(chat_id=update.message.chat_id, message_id=message_id)
+                    except Exception as e:
+                        logger.warning(f"Failed to delete 'wait for reply' message: {e}")
+                user_wait_messages[user_id] = []
 
 
 async def is_previous_message_not_answered_yet(update: Update, context: CallbackContext):
@@ -570,7 +570,12 @@ async def is_previous_message_not_answered_yet(update: Update, context: Callback
     user_id = update.message.from_user.id
     if user_semaphores[user_id].locked():
         text = get_localized_text(C.LOC_WAIT_FOR_REPLY, user_id)
-        await update.message.reply_text(text, reply_to_message_id=update.message.id, parse_mode=ParseMode.HTML)
+        wait_message = await update.message.reply_text(text, reply_to_message_id=update.message.id, parse_mode=ParseMode.HTML)
+        
+        if user_id not in user_wait_messages:
+            user_wait_messages[user_id] = []
+        user_wait_messages[user_id].append(wait_message.message_id)
+        
         return True
     else:
         return False

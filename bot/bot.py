@@ -384,7 +384,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
     user_id = update.message.from_user.id
     
     # handle media groups (multiple photos)
-    if update.message.media_group_id:
+    if update.message.media_group_id and not kwargs.get("image_buffers"):
         mg_id = update.message.media_group_id
         if mg_id not in user_media_groups:
             user_media_groups[mg_id] = {"images": [], "captions": [], "task": None}
@@ -409,7 +409,10 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
                 await asyncio.sleep(0.8) # wait for other images to arrive
                 data = user_media_groups.get(mg_id)
                 if not data: return
-                combined_message = " ".join(data["captions"]) or message or ""
+                # Use unique captions in order
+                seen = set()
+                unique_captions = [x for x in data["captions"] if not (x in seen or seen.add(x))]
+                combined_message = " ".join(unique_captions) or message or ""
                 await message_handle(update, context, message=combined_message, image_buffers=data["images"])
 
             user_media_groups[mg_id]["task"] = asyncio.create_task(handle_media_group())

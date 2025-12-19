@@ -135,7 +135,7 @@ class ChatGPT:
         chat_mode="ai_trainer",
         user_language="en",
         user_profile=None,
-        image_buffer: BytesIO = None,
+        image_buffers: list = None,
     ):
         n_dialog_messages_before = len(dialog_messages)
         answer = None
@@ -143,7 +143,7 @@ class ChatGPT:
             try:
                 if self.model in [C.OPENAI_MODEL_GPT_4_VISION, C.OPENAI_MODEL_GPT_4O, C.OPENAI_MODEL_GPT_5_MINI]:
                     messages = self._generate_prompt_messages(
-                        message, dialog_messages, chat_mode, image_buffer, user_language, user_profile
+                        message, dialog_messages, chat_mode, image_buffers, user_language, user_profile
                     )
                     r = await openai.ChatCompletion.acreate(
                         model=self.model,
@@ -185,7 +185,7 @@ class ChatGPT:
         chat_mode="ai_trainer",
         user_language="en",
         user_profile=None,
-        image_buffer: BytesIO = None,
+        image_buffers: list = None,
     ):
         n_dialog_messages_before = len(dialog_messages)
         answer = None
@@ -193,7 +193,7 @@ class ChatGPT:
             try:
                 if self.model in [C.OPENAI_MODEL_GPT_4_VISION, C.OPENAI_MODEL_GPT_4O, C.OPENAI_MODEL_GPT_5_MINI]:
                     messages = self._generate_prompt_messages(
-                        message, dialog_messages, chat_mode, image_buffer, user_language, user_profile
+                        message, dialog_messages, chat_mode, image_buffers, user_language, user_profile
                     )
                     
                     r_gen = await openai.ChatCompletion.acreate(
@@ -255,7 +255,7 @@ class ChatGPT:
     def _encode_image(self, image_buffer: BytesIO) -> bytes:
         return base64.b64encode(image_buffer.read()).decode("utf-8")
 
-    def _generate_prompt_messages(self, message, dialog_messages, chat_mode, image_buffer: BytesIO = None, user_language: str = "en", user_profile: dict = None):
+    def _generate_prompt_messages(self, message, dialog_messages, chat_mode, image_buffers: list = None, user_language: str = "en", user_profile: dict = None):
         prompt_start = config.chat_modes[chat_mode]["prompt_start"]
         # Handle localized prompt_start
         if isinstance(prompt_start, dict):
@@ -287,27 +287,24 @@ class ChatGPT:
             messages.append({"role": C.OPENAI_ROLE_USER, "content": dialog_message["user"]})
             messages.append({"role": C.OPENAI_ROLE_ASSISTANT, "content": dialog_message["bot"]})
                     
-        if image_buffer is not None:
-            messages.append(
+        if image_buffers is not None:
+            content = [
                 {
-                    "role": "user", 
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": message,
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url" : {
-                              
-                                "url": f"data:image/jpeg;base64,{self._encode_image(image_buffer)}",
-                                "detail":"high"
-                            }
-                        }
-                    ]
+                    "type": "text",
+                    "text": message,
                 }
-                
-            )
+            ]
+            for image_buffer in image_buffers:
+                content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{self._encode_image(image_buffer)}",
+                            "detail": "high"
+                        }
+                    }
+                )
+            messages.append({"role": "user", "content": content})
         else:
             messages.append({"role": "user", "content": message})
 

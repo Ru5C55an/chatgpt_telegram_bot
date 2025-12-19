@@ -80,14 +80,14 @@ en:
   # Subscription
   subscription_title: "🌟 Premium Subscription"
   subscription_description: |
-    <b>Premium gives you:</b>
-     <b>• 📸 Training analysis from screenshots</b>
-     <b>• 🧠 Personalized training plans</b>
-     <b>• ⚡ Custom workouts on demand</b>
-     <b>• 📊 Load & recovery insights</b>
-     <b>• 🏁 Race & goal-focused programs</b>
+    **Premium gives you:**
+     **• 📸 Training analysis from screenshots**
+     **• 🧠 Personalized training plans**
+     **• ⚡ Custom workouts on demand**
+     **• 📊 Load & recovery insights**
+     **• 🏁 Race & goal-focused programs**
     
-    <b>Proceed</b> for 1000 stars / mo
+    **Proceed** for 1000 stars / mo
   subscription_button: "Subscribe for 1000 Stars"
   subscription_success: "🎉 Thank you! Your subscription is active until <b>{expiry_date}</b>."
   subscription_status_premium: "🌟 Premium active until <b>{expiry_date}</b>"
@@ -179,14 +179,14 @@ ru:
   # Subscription
   subscription_title: "🌟 Премиум Подписка"
   subscription_description: |
-    <b>Премиум даёт вам:</b>
-     <b>• 📸 Анализ тренировок по скриншотам</b>
-     <b>• 🧠 Персонализированные планы тренировок</b>
-     <b>• ⚡ Индивидуальные тренировки по запросу</b>
-     <b>• 📊 Анализ нагрузки и восстановления</b>
-     <b>• 🏁 Программы подготовки к гонкам</b>
+    **Премиум даёт вам:**
+     **• 📸 Анализ тренировок по скриншотам<**
+     **• 🧠 Персонализированные планы тренировок**
+     **• ⚡ Индивидуальные тренировки по запросу**
+     **• 📊 Анализ нагрузки и восстановления**
+     **• 🏁 Программы подготовки к гонкам**
     
-    <b>Оформить</b> за 1000 звёзд / мес
+    **Оформить** за 1000 звёзд / мес
   subscription_button: "Подписаться за 1000 Stars"
   subscription_success: "🎉 Спасибо! Ваша подписка активна до <b>{expiry_date}</b>."
   subscription_status_premium: "🌟 Премиум активен до <b>{expiry_date}</b>"

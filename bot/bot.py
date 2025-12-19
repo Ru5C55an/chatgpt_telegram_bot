@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 user_semaphores = {}
 user_tasks = {}
 user_wait_messages = {}
+user_media_groups = {}
 
 def get_localized_text(key, user_id):
     language = db.get_user_attribute(user_id, C.DB_CURRENT_LANGUAGE) or C.DEFAULT_LANGUAGE
@@ -182,7 +183,7 @@ async def retry_handle(update: Update, context: CallbackContext):
     await message_handle(update, context, message=last_dialog_message["user"])
 
 async def _vision_message_handle_fn(
-    update: Update, context: CallbackContext, message=None
+    update: Update, context: CallbackContext, message=None, image_buffers: list = None
 ):
     logger.info('_vision_message_handle_fn')
     user_id = update.message.from_user.id
@@ -205,8 +206,10 @@ async def _vision_message_handle_fn(
 
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
-    buf = None
-    if update.message.photo:
+    bufs = []
+    if image_buffers is not None:
+        bufs = image_buffers
+    elif update.message.photo:
         photo = update.message.photo[-1]
         photo_file = await context.bot.get_file(photo.file_id)
 
@@ -215,6 +218,7 @@ async def _vision_message_handle_fn(
         await photo_file.download_to_memory(buf)
         buf.name = "image.jpg"  # file extension is required
         buf.seek(0)  # move cursor to the beginning of the buffer
+        bufs.append(buf)
 
     # in case of CancelledError
     n_input_tokens, n_output_tokens = 0, 0
@@ -239,7 +243,7 @@ async def _vision_message_handle_fn(
             gen = chatgpt_instance.send_vision_message_stream(
                 _message,
                 dialog_messages=dialog_messages,
-                image_buffer=buf,
+                image_buffers=bufs,
                 chat_mode=chat_mode,
                 user_language=db.get_user_attribute(user_id, C.DB_CURRENT_LANGUAGE) or C.DEFAULT_LANGUAGE,
                 user_profile=user_profile,
@@ -252,7 +256,7 @@ async def _vision_message_handle_fn(
             ) = await chatgpt_instance.send_vision_message(
                 _message,
                 dialog_messages=dialog_messages,
-                image_buffer=buf,
+                image_buffers=bufs,
                 chat_mode=chat_mode,
                 user_language=db.get_user_attribute(user_id, C.DB_CURRENT_LANGUAGE) or C.DEFAULT_LANGUAGE,
                 user_profile=user_profile,
@@ -303,21 +307,25 @@ async def _vision_message_handle_fn(
             prev_answer = answer
 
         # update user data
-        if buf is not None:
-            base_image = base64.b64encode(buf.getvalue()).decode("utf-8")
+        if bufs:
+            # For simplicity, we only store the first image in DB for history display if needed
+            # or we could store all, but the DB schema might need change.
+            # Storing simplified message for history.
+            base_images = [base64.b64encode(b.getvalue()).decode("utf-8") for b in bufs]
             new_dialog_message = {"user": [
                         {
                             "type": "text",
-                            "text": message,
-                        },
+                            "text": _message,
+                        }
+                    ] + [
                         {
                             "type": "image",
-                            "image": base_image,
-                        }
+                            "image": img,
+                        } for img in base_images
                     ]
                 , "bot": answer, "date": datetime.now()}
         else:
-            new_dialog_message = {"user": [{"type": "text", "text": message}], "bot": answer, "date": datetime.now()}
+            new_dialog_message = {"user": [{"type": "text", "text": _message}], "bot": answer, "date": datetime.now()}
         
         db.set_dialog_messages(
             user_id,
@@ -354,7 +362,7 @@ async def unsupport_message_handle(update: Update, context: CallbackContext, mes
     await update.message.reply_text(error_text)
     return
 
-async def message_handle(update: Update, context: CallbackContext, message=None):
+async def message_handle(update: Update, context: CallbackContext, message=None, **kwargs):
     # check if bot was mentioned (for group chats)
     if not await is_bot_mentioned(update, context):
         return
@@ -374,6 +382,38 @@ async def message_handle(update: Update, context: CallbackContext, message=None)
     if await is_previous_message_not_answered_yet(update, context): return
 
     user_id = update.message.from_user.id
+    
+    # handle media groups (multiple photos)
+    if update.message.media_group_id:
+        mg_id = update.message.media_group_id
+        if mg_id not in user_media_groups:
+            user_media_groups[mg_id] = {"images": [], "captions": [], "task": None}
+        
+        # collect photo
+        if update.message.photo:
+            photo = update.message.photo[-1]
+            photo_file = await context.bot.get_file(photo.file_id)
+            buf = io.BytesIO()
+            await photo_file.download_to_memory(buf)
+            buf.name = "image.jpg"
+            buf.seek(0)
+            user_media_groups[mg_id]["images"].append(buf)
+        
+        # collect caption
+        caption = update.message.caption or update.message.text
+        if caption:
+            user_media_groups[mg_id]["captions"].append(caption)
+            
+        if user_media_groups[mg_id]["task"] is None:
+            async def handle_media_group():
+                await asyncio.sleep(0.8) # wait for other images to arrive
+                data = user_media_groups.get(mg_id)
+                if not data: return
+                combined_message = " ".join(data["captions"]) or message or ""
+                await message_handle(update, context, message=combined_message, image_buffers=data["images"])
+
+            user_media_groups[mg_id]["task"] = asyncio.create_task(handle_media_group())
+        return
     
     # Handle profile field text input
     if C.CONTEXT_PROFILE_FIELD_EDITING in context.user_data:
@@ -526,16 +566,16 @@ async def message_handle(update: Update, context: CallbackContext, message=None)
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
     async with user_semaphores[user_id]:
-        if current_model in ["gpt-4-vision-preview", "gpt-4o", "gpt-5-mini-2025-08-07"] or update.message.photo is not None and len(update.message.photo) > 0:
+        # get image_buffers from kwargs or collected from media group
+        image_buffers = kwargs.get("image_buffers")
 
-            logger.error(current_model)
-            # What is this? ^^^
+        if current_model in ["gpt-4-vision-preview", "gpt-4o", "gpt-5-mini-2025-08-07"] or (update.message.photo is not None and len(update.message.photo) > 0) or image_buffers:
 
             if current_model not in ["gpt-4o", "gpt-4-vision-preview", "gpt-5-mini-2025-08-07"]:
                 current_model = "gpt-5-mini-2025-08-07"
                 db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, C.OPENAI_MODEL_GPT_5_MINI)
             task = asyncio.create_task(
-                _vision_message_handle_fn(update, context, message=_message)
+                _vision_message_handle_fn(update, context, message=_message, image_buffers=image_buffers)
             )
         else:
             task = asyncio.create_task(
@@ -562,6 +602,10 @@ async def message_handle(update: Update, context: CallbackContext, message=None)
                     except Exception as e:
                         logger.warning(f"Failed to delete 'wait for reply' message: {e}")
                 user_wait_messages[user_id] = []
+            
+            # cleanup media groups if any
+            if update.message and update.message.media_group_id in user_media_groups:
+                del user_media_groups[update.message.media_group_id]
 
 
 async def is_previous_message_not_answered_yet(update: Update, context: CallbackContext):

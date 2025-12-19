@@ -37,7 +37,7 @@ CONTEXT_PROFILE_FIELD_EDITING = "profile_field_editing"
 
 # Default values
 DEFAULT_MODEL = "gpt-5-mini-2025-08-07"
-DEFAULT_LANGUAGE = "en"
+DEFAULT_LANGUAGE = "ru"
 DEFAULT_CHAT_MODE = "ai_trainer"
 
 # Subscription keys

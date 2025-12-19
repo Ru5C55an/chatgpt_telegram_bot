@@ -4,6 +4,7 @@ import asyncio
 import traceback
 import html
 import json
+import re
 from datetime import datetime, timedelta
 import openai
 
@@ -1112,6 +1113,14 @@ async def show_subscription_handle(update: Update, context: CallbackContext):
         title = get_localized_text(C.LOC_SUBSCRIPTION_TITLE, user_id)
         description = get_localized_text(C.LOC_SUBSCRIPTION_DESCRIPTION, user_id)
         
+        # Send a formatted message with description first
+        await update.message.reply_text(description, parse_mode=ParseMode.HTML)
+        
+        # Strip HTML tags and shorten for the invoice (Telegram limit 255 chars)
+        plain_description = re.sub('<[^<]+?>', '', description).strip()
+        if len(plain_description) > 255:
+            plain_description = plain_description[:252] + "..."
+        
         # Use test pricing for test users
         is_test = is_test_user(user_id)
         price = C.TEST_SUBSCRIPTION_PRICE_STARS if is_test else C.SUBSCRIPTION_PRICE_STARS
@@ -1119,7 +1128,7 @@ async def show_subscription_handle(update: Update, context: CallbackContext):
         await context.bot.send_invoice(
             chat_id=update.message.chat_id,
             title=title,
-            description=description,
+            description=plain_description,
             payload=C.SUBSCRIPTION_PAYLOAD_MONTHLY,
             provider_token="",  # Empty for Telegram Stars
             currency="XTR",

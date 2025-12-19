@@ -133,7 +133,7 @@ class ChatGPT:
         message,
         dialog_messages=[],
         chat_mode="ai_trainer",
-        user_language="en",
+        user_language="ru",
         user_profile=None,
         image_buffers: list = None,
     ):

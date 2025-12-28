@@ -66,7 +66,7 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
     if not db.check_if_user_exists(user.id):
         db.add_new_user(
             user.id,
-            update.message.chat_id,
+            update.effective_chat.id,
             username=user.username,
             first_name=user.first_name,
             last_name= user.last_name
@@ -116,7 +116,9 @@ async def register_user_if_not_exists(update: Update, context: CallbackContext, 
 
 async def is_bot_mentioned(update: Update, context: CallbackContext):
      try:
-         message = update.message
+         message = update.effective_message
+         if message is None:
+             return True
 
          if message.chat.type == "private":
              return True
@@ -135,8 +137,8 @@ async def is_bot_mentioned(update: Update, context: CallbackContext):
 
 
 async def start_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update, context, update.message.from_user)
-    user_id = update.message.from_user.id
+    await register_user_if_not_exists(update, context, update.effective_user)
+    user_id = update.effective_user.id
 
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
     db.start_new_dialog(user_id)
@@ -144,38 +146,38 @@ async def start_handle(update: Update, context: CallbackContext):
     reply_text = get_localized_text(C.LOC_WELCOME, user_id)
     reply_text += get_localized_text(C.LOC_HELP, user_id)
 
-    await update.message.reply_text(reply_text, parse_mode=ParseMode.HTML)
+    await update.effective_message.reply_text(reply_text, parse_mode=ParseMode.HTML)
     await show_profile_handle(update, context)
 
 
 async def help_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update, context, update.message.from_user)
-    user_id = update.message.from_user.id
+    await register_user_if_not_exists(update, context, update.effective_user)
+    user_id = update.effective_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
-    await update.message.reply_text(get_localized_text(C.LOC_HELP, user_id), parse_mode=ParseMode.HTML)
+    await update.effective_message.reply_text(get_localized_text(C.LOC_HELP, user_id), parse_mode=ParseMode.HTML)
 
 
 async def help_group_chat_handle(update: Update, context: CallbackContext):
-     await register_user_if_not_exists(update, context, update.message.from_user)
-     user_id = update.message.from_user.id
+     await register_user_if_not_exists(update, context, update.effective_user)
+     user_id = update.effective_user.id
      db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
      text = get_localized_text(C.LOC_HELP_GROUP_CHAT, user_id).format(bot_username="@" + context.bot.username)
 
-     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-     await update.message.reply_video(config.help_group_chat_video_path)
+     await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
+     await update.effective_message.reply_video(config.help_group_chat_video_path)
 
 
 async def retry_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update, context, update.message.from_user)
+    await register_user_if_not_exists(update, context, update.effective_user)
     if await is_previous_message_not_answered_yet(update, context): return
 
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     dialog_messages = db.get_dialog_messages(user_id, dialog_id=None)
     if len(dialog_messages) == 0:
-        await update.message.reply_text(get_localized_text(C.LOC_NO_MESSAGE_TO_RETRY, user_id))
+        await update.effective_message.reply_text(get_localized_text(C.LOC_NO_MESSAGE_TO_RETRY, user_id))
         return
 
     last_dialog_message = dialog_messages.pop()
@@ -187,14 +189,14 @@ async def _vision_message_handle_fn(
     update: Update, context: CallbackContext, message=None, image_buffers: list = None
 ):
     logger.info('_vision_message_handle_fn')
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     current_model = db.get_user_attribute(user_id, C.DB_CURRENT_MODEL)
     if current_model not in config.models["available_text_models"]:
         current_model = "gpt-5-mini-2025-08-07"
         db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, current_model)
 
     if current_model not in ["gpt-4-vision-preview", "gpt-4o", "gpt-5-mini-2025-08-07"]:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             get_localized_text(C.LOC_IMAGES_PROCESSING_NOT_AVAILABLE, user_id),
             parse_mode=ParseMode.HTML,
         )
@@ -226,12 +228,12 @@ async def _vision_message_handle_fn(
 
     try:
         # send placeholder message to user
-        placeholder_message = await update.message.reply_text("...")
+        placeholder_message = await update.effective_message.reply_text("...")
         # Use the message parameter if provided (e.g., from voice transcription), otherwise get from update
-        _message = message if message is not None else (update.message.caption or update.message.text or '')
+        _message = message if message is not None else (update.effective_message.caption or update.effective_message.text or '')
 
         # send typing action
-        await update.message.chat.send_action(action="typing")
+        await update.effective_chat.send_action(action="typing")
 
         dialog_messages = db.get_dialog_messages(user_id, dialog_id=None)
         parse_mode = {"html": ParseMode.HTML, "markdown": ParseMode.MARKDOWN}[
@@ -339,7 +341,7 @@ async def _vision_message_handle_fn(
     except openai.error.RateLimitError:
         error_text = get_localized_text(C.LOC_OPENAI_RATE_LIMIT_ERROR, user_id)
         logger.error(f"Rate limit reached for user {user_id}")
-        await update.message.reply_text(error_text, parse_mode=ParseMode.HTML)
+        await update.effective_message.reply_text(error_text, parse_mode=ParseMode.HTML)
         return
 
     except asyncio.CancelledError:
@@ -353,14 +355,14 @@ async def _vision_message_handle_fn(
             return
         error_text = get_localized_text(C.LOC_ERROR_MESSAGE, user_id).format(reason=str(e))
         logger.error(error_text)
-        await update.message.reply_text(error_text)
+        await update.effective_message.reply_text(error_text)
         return
 
 async def unsupport_message_handle(update: Update, context: CallbackContext, message=None):
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     error_text = get_localized_text(C.LOC_UNSUPPORTED_MESSAGE_TYPE, user_id)
     logger.error(error_text)
-    await update.message.reply_text(error_text)
+    await update.effective_message.reply_text(error_text)
     return
 
 async def message_handle(update: Update, context: CallbackContext, message=None, **kwargs):
@@ -373,26 +375,26 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
         await edited_message_handle(update, context)
         return
 
-    _message = message or update.message.text or update.message.caption or ""
+    _message = message or update.effective_message.text or update.effective_message.caption or ""
 
     # remove bot mention (in group chats)
-    if update.message.chat.type != "private":
+    if update.effective_chat.type != "private":
         _message = _message.replace("@" + context.bot.username, "").strip()
 
-    await register_user_if_not_exists(update, context, update.message.from_user)
+    await register_user_if_not_exists(update, context, update.effective_user)
     if await is_previous_message_not_answered_yet(update, context): return
 
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     
     # handle media groups (multiple photos)
-    if update.message.media_group_id and not kwargs.get("image_buffers"):
-        mg_id = update.message.media_group_id
+    if update.effective_message.media_group_id and not kwargs.get("image_buffers"):
+        mg_id = update.effective_message.media_group_id
         if mg_id not in user_media_groups:
             user_media_groups[mg_id] = {"images": [], "captions": [], "task": None}
         
         # collect photo
-        if update.message.photo:
-            photo = update.message.photo[-1]
+        if update.effective_message.photo:
+            photo = update.effective_message.photo[-1]
             photo_file = await context.bot.get_file(photo.file_id)
             buf = io.BytesIO()
             await photo_file.download_to_memory(buf)
@@ -401,7 +403,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             user_media_groups[mg_id]["images"].append(buf)
         
         # collect caption
-        caption = update.message.caption or update.message.text
+        caption = update.effective_message.caption or update.effective_message.text
         if caption:
             user_media_groups[mg_id]["captions"].append(caption)
             
@@ -432,19 +434,19 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
                 db.set_user_attribute(user_id, C.DB_USER_PROFILE, profile)
                 text = get_localized_text(C.LOC_PROFILE_UPDATED, user_id)
                 del context.user_data[C.CONTEXT_PROFILE_FIELD_EDITING]
-                await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+                await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
                 await prompt_next_empty_profile_field(user_id, context, update)
                 return
             except ValueError:
                 text = get_localized_text(C.LOC_PROFILE_INVALID_NUMBER, user_id)
-                await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+                await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
                 return
         elif field == C.PROFILE_GOALS:
             profile[field] = value
             db.set_user_attribute(user_id, C.DB_USER_PROFILE, profile)
             text = get_localized_text(C.LOC_PROFILE_UPDATED, user_id)
             del context.user_data[C.CONTEXT_PROFILE_FIELD_EDITING]
-            await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+            await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
             await prompt_next_empty_profile_field(user_id, context, update)
             return
 
@@ -474,13 +476,13 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
 
         try:
             # send placeholder message to user
-            placeholder_message = await update.message.reply_text("...")
+            placeholder_message = await update.effective_message.reply_text("...")
 
             # send typing action
-            await update.message.chat.send_action(action="typing")
+            await update.effective_chat.send_action(action="typing")
 
             if _message is None or len(_message) == 0:
-                 await update.message.reply_text(get_localized_text(C.LOC_EMPTY_MESSAGE, user_id), parse_mode=ParseMode.HTML)
+                 await update.effective_message.reply_text(get_localized_text(C.LOC_EMPTY_MESSAGE, user_id), parse_mode=ParseMode.HTML)
                  return
 
             dialog_messages = db.get_dialog_messages(user_id, dialog_id=None)
@@ -544,7 +546,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
         except openai.error.RateLimitError:
             error_text = get_localized_text(C.LOC_OPENAI_RATE_LIMIT_ERROR, user_id)
             logger.error(f"Rate limit reached for user {user_id}")
-            await update.message.reply_text(error_text, parse_mode=ParseMode.HTML)
+            await update.effective_message.reply_text(error_text, parse_mode=ParseMode.HTML)
             return
 
         except asyncio.CancelledError:
@@ -558,7 +560,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
                 return
             error_text = get_localized_text(C.LOC_ERROR_MESSAGE, user_id).format(reason=str(e))
             logger.error(error_text)
-            await update.message.reply_text(error_text)
+            await update.effective_message.reply_text(error_text)
             return
 
         # send message if some messages were removed from the context
@@ -567,13 +569,13 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
                 text = get_localized_text(C.LOC_CONTEXT_REMOVED_FIRST, user_id)
             else:
                 text = get_localized_text(C.LOC_CONTEXT_REMOVED_MULTIPLE, user_id).format(n_messages=n_first_dialog_messages_removed)
-            await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+            await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
 
     async with user_semaphores[user_id]:
         # get image_buffers from kwargs or collected from media group
         image_buffers = kwargs.get("image_buffers")
 
-        if current_model in ["gpt-4-vision-preview", "gpt-4o", "gpt-5-mini-2025-08-07"] or (update.message.photo is not None and len(update.message.photo) > 0) or image_buffers:
+        if current_model in ["gpt-4-vision-preview", "gpt-4o", "gpt-5-mini-2025-08-07"] or (update.effective_message.photo is not None and len(update.effective_message.photo) > 0) or image_buffers:
 
             if current_model not in ["gpt-4o", "gpt-4-vision-preview", "gpt-5-mini-2025-08-07"]:
                 current_model = "gpt-5-mini-2025-08-07"
@@ -591,7 +593,7 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
         try:
             await task
         except asyncio.CancelledError:
-            await update.message.reply_text(get_localized_text(C.LOC_CANCELED, user_id), parse_mode=ParseMode.HTML)
+            await update.effective_message.reply_text(get_localized_text(C.LOC_CANCELED, user_id), parse_mode=ParseMode.HTML)
         else:
             pass
         finally:
@@ -602,23 +604,23 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             if user_id in user_wait_messages:
                 for message_id in user_wait_messages[user_id]:
                     try:
-                        await context.bot.delete_message(chat_id=update.message.chat_id, message_id=message_id)
+                        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=message_id)
                     except Exception as e:
                         logger.warning(f"Failed to delete 'wait for reply' message: {e}")
                 user_wait_messages[user_id] = []
             
             # cleanup media groups if any
-            if update.message and update.message.media_group_id in user_media_groups:
-                del user_media_groups[update.message.media_group_id]
+            if update.effective_message and update.effective_message.media_group_id in user_media_groups:
+                del user_media_groups[update.effective_message.media_group_id]
 
 
 async def is_previous_message_not_answered_yet(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update, context, update.message.from_user)
+    await register_user_if_not_exists(update, context, update.effective_user)
 
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     if user_semaphores[user_id].locked():
         text = get_localized_text(C.LOC_WAIT_FOR_REPLY, user_id)
-        wait_message = await update.message.reply_text(text, reply_to_message_id=update.message.id, parse_mode=ParseMode.HTML)
+        wait_message = await update.effective_message.reply_text(text, reply_to_message_id=update.effective_message.id, parse_mode=ParseMode.HTML)
         
         if user_id not in user_wait_messages:
             user_wait_messages[user_id] = []
@@ -634,10 +636,10 @@ async def voice_message_handle(update: Update, context: CallbackContext):
     if not await is_bot_mentioned(update, context):
         return
 
-    await register_user_if_not_exists(update, context, update.message.from_user)
+    await register_user_if_not_exists(update, context, update.effective_user)
     if await is_previous_message_not_answered_yet(update, context): return
 
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     
     # Check quota for free users
     if not await check_user_quota(user_id, update, context):
@@ -645,7 +647,7 @@ async def voice_message_handle(update: Update, context: CallbackContext):
 
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
-    voice = update.message.voice
+    voice = update.effective_message.voice
     voice_file = await context.bot.get_file(voice.file_id)
     
     # store file in memory, not on disk
@@ -658,15 +660,15 @@ async def voice_message_handle(update: Update, context: CallbackContext):
         transcribed_text = await openai_utils.transcribe_audio(buf)
     except openai.error.PermissionError:
         text = get_localized_text(C.LOC_VOICE_RECOGNITION_UNAVAILABLE, user_id)
-        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
         return
     except Exception as e:
         logger.error(f"Error transcribing audio: {e}")
         text = get_localized_text(C.LOC_VOICE_PROCESSING_ERROR, user_id)
-        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
         return
     text = f"🎤: <i>{transcribed_text}</i>"
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
 
     # update n_transcribed_seconds
     db.set_user_attribute(user_id, C.DB_N_TRANSCRIBED_SECONDS, voice.duration + db.get_user_attribute(user_id, C.DB_N_TRANSCRIBED_SECONDS))
@@ -675,22 +677,22 @@ async def voice_message_handle(update: Update, context: CallbackContext):
 
 
 async def generate_image_handle(update: Update, context: CallbackContext, message=None):
-    await register_user_if_not_exists(update, context, update.message.from_user)
+    await register_user_if_not_exists(update, context, update.effective_user)
     if await is_previous_message_not_answered_yet(update, context): return
 
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
-    await update.message.chat.send_action(action="upload_photo")
+    await update.effective_chat.send_action(action="upload_photo")
 
-    message = message or update.message.text
+    message = message or update.effective_message.text
 
     try:
         image_urls = await openai_utils.generate_images(message, n_images=config.return_n_generated_images, size=config.image_size)
     except openai.error.InvalidRequestError as e:
         if str(e).startswith("Your request was rejected as a result of our safety system"):
             text = get_localized_text(C.LOC_IMAGE_GENERATION_REJECTED, user_id)
-            await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+            await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
             return
         else:
             raise
@@ -699,20 +701,20 @@ async def generate_image_handle(update: Update, context: CallbackContext, messag
     db.set_user_attribute(user_id, C.DB_N_GENERATED_IMAGES, config.return_n_generated_images + db.get_user_attribute(user_id, C.DB_N_GENERATED_IMAGES))
 
     for i, image_url in enumerate(image_urls):
-        await update.message.chat.send_action(action="upload_photo")
-        await update.message.reply_photo(image_url, parse_mode=ParseMode.HTML)
+        await update.effective_chat.send_action(action="upload_photo")
+        await update.effective_message.reply_photo(image_url, parse_mode=ParseMode.HTML)
 
 
 async def new_dialog_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update, context, update.message.from_user)
+    await register_user_if_not_exists(update, context, update.effective_user)
     if await is_previous_message_not_answered_yet(update, context): return
 
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
     db.set_user_attribute(user_id, C.DB_CURRENT_MODEL, C.OPENAI_MODEL_GPT_5_MINI)
 
     db.start_new_dialog(user_id)
-    await update.message.reply_text(get_localized_text(C.LOC_STARTING_NEW_DIALOG, user_id))
+    await update.effective_message.reply_text(get_localized_text(C.LOC_STARTING_NEW_DIALOG, user_id))
 
     chat_mode = db.get_user_attribute(user_id, C.DB_CURRENT_CHAT_MODE)
     if chat_mode not in config.chat_modes.keys():
@@ -721,20 +723,20 @@ async def new_dialog_handle(update: Update, context: CallbackContext):
     
     language = db.get_user_attribute(user_id, C.DB_CURRENT_LANGUAGE) or C.DEFAULT_LANGUAGE
     welcome_message = config.chat_modes[chat_mode]['welcome_message'][language]
-    await update.message.reply_text(welcome_message, parse_mode=ParseMode.HTML)
+    await update.effective_message.reply_text(welcome_message, parse_mode=ParseMode.HTML)
 
 
 async def cancel_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update, context, update.message.from_user)
+    await register_user_if_not_exists(update, context, update.effective_user)
 
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     if user_id in user_tasks:
         task = user_tasks[user_id]
         task.cancel()
     else:
-        await update.message.reply_text(get_localized_text(C.LOC_NOTHING_TO_CANCEL, user_id), parse_mode=ParseMode.HTML)
+        await update.effective_message.reply_text(get_localized_text(C.LOC_NOTHING_TO_CANCEL, user_id), parse_mode=ParseMode.HTML)
 
 
 def get_chat_mode_menu(page_index: int, user_id: int):
@@ -775,21 +777,21 @@ def get_chat_mode_menu(page_index: int, user_id: int):
 
 
 async def show_chat_modes_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update, context, update.message.from_user)
+    await register_user_if_not_exists(update, context, update.effective_user)
     if await is_previous_message_not_answered_yet(update, context): return
 
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     text, reply_markup = get_chat_mode_menu(0, user_id)
-    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    await update.effective_message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
 async def show_chat_modes_callback_handle(update: Update, context: CallbackContext):
-     await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
-     if await is_previous_message_not_answered_yet(update.callback_query, context): return
+     await register_user_if_not_exists(update, context, update.effective_user)
+     if await is_previous_message_not_answered_yet(update, context): return
 
-     user_id = update.callback_query.from_user.id
+     user_id = update.effective_user.id
      db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
      query = update.callback_query
@@ -808,8 +810,8 @@ async def show_chat_modes_callback_handle(update: Update, context: CallbackConte
 
 
 async def set_chat_mode_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
-    user_id = update.callback_query.from_user.id
+    await register_user_if_not_exists(update, context, update.effective_user)
+    user_id = update.effective_user.id
 
     query = update.callback_query
     await query.answer()
@@ -853,19 +855,19 @@ def get_settings_menu(user_id: int):
 
 
 async def settings_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update, context, update.message.from_user)
+    await register_user_if_not_exists(update, context, update.effective_user)
     if await is_previous_message_not_answered_yet(update, context): return
 
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     text, reply_markup = get_settings_menu(user_id)
-    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    await update.effective_message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
 async def set_settings_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
-    user_id = update.callback_query.from_user.id
+    await register_user_if_not_exists(update, context, update.effective_user)
+    user_id = update.effective_user.id
 
     query = update.callback_query
     await query.answer()
@@ -883,9 +885,9 @@ async def set_settings_handle(update: Update, context: CallbackContext):
 
 
 async def show_balance_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update, context, update.message.from_user)
+    await register_user_if_not_exists(update, context, update.effective_user)
 
-    user_id = update.message.from_user.id
+    user_id = update.effective_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
     
     # Check if user is admin or tester (they get detailed view)
@@ -960,7 +962,7 @@ async def show_balance_handle(update: Update, context: CallbackContext):
             text = f"📊 <b>Tokens remaining:</b> {remaining_tokens:,} / {C.FREE_TOKEN_LIMIT:,}\n"
             text += f"\n💡 Upgrade to premium for more tokens!"
 
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
 
 
 async def edited_message_handle(update: Update, context: CallbackContext):
@@ -970,8 +972,8 @@ async def edited_message_handle(update: Update, context: CallbackContext):
 
 
 async def show_language_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update, context, update.message.from_user)
-    user_id = update.message.from_user.id
+    await register_user_if_not_exists(update, context, update.effective_user)
+    user_id = update.effective_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     text = get_localized_text(C.LOC_SELECT_LANGUAGE, user_id)
@@ -988,12 +990,12 @@ async def show_language_handle(update: Update, context: CallbackContext):
         keyboard.append([InlineKeyboardButton(display_name, callback_data=f"set_language|{language_code}")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    await update.effective_message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
 async def set_language_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
-    user_id = update.callback_query.from_user.id
+    await register_user_if_not_exists(update, context, update.effective_user)
+    user_id = update.effective_user.id
 
     query = update.callback_query
     await query.answer()
@@ -1073,7 +1075,7 @@ async def check_user_quota(user_id: int, update: Update, context: CallbackContex
             text = get_localized_text(C.LOC_PREMIUM_LIMIT_REACHED, user_id).format(
                 reset_date=get_formatted_date(reset_date, user_id)
             )
-            await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+            await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
             return False
         
         return True
@@ -1085,15 +1087,15 @@ async def check_user_quota(user_id: int, update: Update, context: CallbackContex
             
         if total_tokens >= C.FREE_TOKEN_LIMIT:
             text = get_localized_text(C.LOC_SUBSCRIPTION_LIMIT_REACHED, user_id)
-            await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+            await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
             return False
             
         return True
 
 
 async def show_subscription_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update, context, update.message.from_user)
-    user_id = update.message.from_user.id
+    await register_user_if_not_exists(update, context, update.effective_user)
+    user_id = update.effective_user.id
     
     is_premium = is_premium_user(user_id)
     expiry = db.get_user_attribute(user_id, C.DB_SUBSCRIPTION_EXPIRY)
@@ -1108,21 +1110,21 @@ async def show_subscription_handle(update: Update, context: CallbackContext):
         if status_badge:
             text += f"\n\n{status_badge}"
         
-        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
     else:
         title = get_localized_text(C.LOC_SUBSCRIPTION_TITLE, user_id)
         description = get_localized_text(C.LOC_SUBSCRIPTION_DESCRIPTION, user_id)
         invoice_description = get_localized_text(C.LOC_SUBSCRIPTION_INVOICE_DESCRIPTION, user_id)
         
         # Send a formatted message with description first
-        await update.message.reply_text(description, parse_mode=ParseMode.HTML)
+        await update.effective_message.reply_text(description, parse_mode=ParseMode.HTML)
         
         # Use test pricing for test users
         is_test = is_test_user(user_id)
         price = C.TEST_SUBSCRIPTION_PRICE_STARS if is_test else C.SUBSCRIPTION_PRICE_STARS
         
         await context.bot.send_invoice(
-            chat_id=update.message.chat_id,
+            chat_id=update.effective_chat.id,
             title=title,
             description=invoice_description,
             payload=C.SUBSCRIPTION_PAYLOAD_MONTHLY,
@@ -1146,8 +1148,8 @@ async def precheckout_callback(update: Update, context: CallbackContext):
 
 
 async def successful_payment_callback(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update, context, update.message.from_user)
-    user_id = update.message.from_user.id
+    await register_user_if_not_exists(update, context, update.effective_user)
+    user_id = update.effective_user.id
     
     # Determine if user is a test user
     is_test = is_test_user(user_id)
@@ -1174,10 +1176,10 @@ async def successful_payment_callback(update: Update, context: CallbackContext):
     # Add to history
     payment_info = {
         "date": datetime.now(),
-        "amount": update.message.successful_payment.total_amount,
-        "currency": update.message.successful_payment.currency,
-        "telegram_payment_charge_id": update.message.successful_payment.telegram_payment_charge_id,
-        "provider_payment_charge_id": update.message.successful_payment.provider_payment_charge_id
+        "amount": update.effective_message.successful_payment.total_amount,
+        "currency": update.effective_message.successful_payment.currency,
+        "telegram_payment_charge_id": update.effective_message.successful_payment.telegram_payment_charge_id,
+        "provider_payment_charge_id": update.effective_message.successful_payment.provider_payment_charge_id
     }
     
     history = db.get_user_attribute(user_id, C.DB_SUBSCRIPTION_HISTORY) or []
@@ -1187,7 +1189,7 @@ async def successful_payment_callback(update: Update, context: CallbackContext):
     text = get_localized_text(C.LOC_SUBSCRIPTION_SUCCESS, user_id).format(
         expiry_date=get_formatted_date(new_expiry, user_id)
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
     
     # Refresh menu if needed or just confirm
     # For now just confirmation message is enough
@@ -1219,10 +1221,7 @@ async def prompt_next_empty_profile_field(user_id: int, context: CallbackContext
                     [InlineKeyboardButton(get_localized_text(C.LOC_FITNESS_LEVEL_ADVANCED, user_id), callback_data="profile_set|fitness_level|advanced")],
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
-                if update.callback_query:
-                    await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-                else:
-                    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+                await update.effective_message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
                     
             elif field == C.PROFILE_GENDER:
                 text = get_localized_text(C.LOC_PROFILE_SELECT_GENDER, user_id)
@@ -1232,10 +1231,7 @@ async def prompt_next_empty_profile_field(user_id: int, context: CallbackContext
                     [InlineKeyboardButton(get_localized_text(C.LOC_GENDER_OTHER, user_id), callback_data="profile_set|gender|other")],
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
-                if update.callback_query:
-                    await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-                else:
-                    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+                await update.effective_message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
             else:
                 if field == C.PROFILE_HEIGHT:
                     text = get_localized_text(C.LOC_PROFILE_ENTER_HEIGHT, user_id)
@@ -1247,7 +1243,7 @@ async def prompt_next_empty_profile_field(user_id: int, context: CallbackContext
                 if update.callback_query:
                     await update.callback_query.message.reply_text(text, parse_mode=ParseMode.HTML)
                 else:
-                    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+                    await update.effective_message.reply_text(text, parse_mode=ParseMode.HTML)
             return
 
     # All fields filled, show profile summary
@@ -1255,8 +1251,8 @@ async def prompt_next_empty_profile_field(user_id: int, context: CallbackContext
 
 
 async def show_profile_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update, context, update.message.from_user)
-    user_id = update.message.from_user.id
+    await register_user_if_not_exists(update, context, update.effective_user)
+    user_id = update.effective_user.id
     db.set_user_attribute(user_id, C.DB_LAST_INTERACTION, datetime.now())
 
     profile = db.get_user_attribute(user_id, C.DB_USER_PROFILE) or {}
@@ -1283,12 +1279,12 @@ async def show_profile_handle(update: Update, context: CallbackContext):
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    await update.effective_message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
 
 async def profile_edit_callback_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
-    user_id = update.callback_query.from_user.id
+    await register_user_if_not_exists(update, context, update.effective_user)
+    user_id = update.effective_user.id
     query = update.callback_query
     await query.answer()
 
@@ -1329,8 +1325,8 @@ async def profile_edit_callback_handle(update: Update, context: CallbackContext)
 
 
 async def profile_set_callback_handle(update: Update, context: CallbackContext):
-    await register_user_if_not_exists(update.callback_query, context, update.callback_query.from_user)
-    user_id = update.callback_query.from_user.id
+    await register_user_if_not_exists(update, context, update.effective_user)
+    user_id = update.effective_user.id
     query = update.callback_query
     await query.answer()
 
